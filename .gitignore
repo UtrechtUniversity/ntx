@@ -18,8 +18,12 @@ app/media/
 .vscode/
 .idea/
 
-# Node / Tailwind
+# Node
 node_modules/
+
+# Tailwind build output
+app/static/css/tailwind.css
+app/static/css/tailwind.*.css.map
 
 # Secrets
 .env
