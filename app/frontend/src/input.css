@@ -1,2 +1,4 @@
 @import "tailwindcss";
+@source "../../templates/**/*.html";
+
 /* Custom global styles below */
