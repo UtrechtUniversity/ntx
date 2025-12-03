@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.sqlite3
+
+# Environments
+.venv/
+env/
+venv/
+
+# Django
+app/staticfiles/
+app/media/
+
+# IDE
+.vscode/
+.idea/
+
+# Node / Tailwind
+node_modules/
+
+# Secrets
+.env
+*.env
