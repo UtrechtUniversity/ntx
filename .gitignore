@@ -28,3 +28,6 @@ app/static/css/tailwind.*.css.map
 # Secrets
 .env
 *.env
+
+# LibreOffice
+.~lock.*
