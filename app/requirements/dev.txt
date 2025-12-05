@@ -10,5 +10,7 @@ ruff==0.14.7
     # via -r requirements/dev.in
 sqlparse==0.5.4
     # via django
+ty==0.0.1a31
+    # via -r requirements/dev.in
 tzdata==2025.2 ; sys_platform == 'win32'
     # via django
