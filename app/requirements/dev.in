@@ -1,4 +1,6 @@
 -r base.in
 django-stubs
 ruff
-ty
+pyright
+pytest
+pytest-django

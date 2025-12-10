@@ -1,1 +1,326 @@
-# Register your models here.
+from __future__ import annotations
+
+from collections.abc import Sequence
+from typing import Any, cast
+
+from django.contrib import admin
+from django.db import models
+from django.db.models import Count
+from django.template.loader import render_to_string
+from django.utils.safestring import SafeString, mark_safe
+
+from .metrics_metadata import METRIC_SECTIONS
+from .metrics_schema import MetricsPayload
+from .models import (
+    Chemical,
+    ConcentrationUnit,
+    Condition,
+    Experiment,
+    ExperimentFile,
+    NeuronalMetricsFrame,
+    Project,
+)
+
+Numeric = float | int | None
+
+
+def _format_metrics_value(value: Numeric, *, is_ratio: bool) -> str:
+    if value is None:
+        return ""
+    if is_ratio and value == -1:
+        return "KO"
+    if isinstance(value, int):
+        return str(value)
+    # Format with 4 significant digits (for now)
+    return format(float(value), ".4g")
+
+
+def _render_metrics_table(
+    *,
+    params: Sequence[str],
+    wells: Sequence[str],
+    rows: Sequence[Sequence[Numeric]],
+    is_ratio: bool,
+) -> SafeString:
+    table_rows = _build_table_rows(params=params, wells=wells, rows=rows, is_ratio=is_ratio)
+
+    return mark_safe(
+        render_to_string(
+            "admin/ntx/neuronalmetrics/metrics_table.html",
+            {"wells": list(wells), "rows": table_rows},
+        )
+    )
+
+
+def _build_table_rows(
+    *,
+    params: Sequence[str],
+    wells: Sequence[str],
+    rows: Sequence[Sequence[Numeric]],
+    is_ratio: bool,
+) -> list[dict[str, str | list[str]]]:
+    table_rows: list[dict[str, str | list[str]]] = []
+    for param, row in zip(params, rows):
+        cells = [
+            _format_metrics_value(row[idx] if idx < len(row) else None, is_ratio=is_ratio)
+            for idx in range(len(wells))
+        ]
+        table_rows.append({"param": param, "cells": cells})
+    return table_rows
+
+
+def _render_admin_message(message: str) -> SafeString:
+    return mark_safe(
+        render_to_string(
+            "admin/ntx/neuronalmetrics/message.html",
+            {"message": message},
+        )
+    )
+
+
+def _render_metrics_payload_table(payload: MetricsPayload, *, section: str) -> SafeString:
+    matrix = getattr(payload, section)
+    is_ratio = section == "ratio"
+
+    return _render_metrics_table(
+        params=payload.params,
+        wells=payload.wells,
+        rows=matrix,
+        is_ratio=is_ratio,
+    )
+
+
+def _render_qc_json_table(qc_json: object) -> SafeString:
+    if not qc_json:
+        return _render_admin_message("No qc_json payload stored.")
+
+    qc = cast(dict[str, Any], qc_json)
+    wells = cast(list[str], qc["wells"])
+
+    params = list(METRIC_SECTIONS.get("QC", []))
+    extras = sorted(key for key in qc.keys() if key not in {"wells"} and key not in params)
+    params.extend(extras)
+
+    rows = [cast(list[Numeric], qc[param]) for param in params]
+    return _render_metrics_table(params=params, wells=wells, rows=rows, is_ratio=False)
+
+
+class ReadOnlyAdminMixin:
+    """
+    Disable editing in the admin for ingestion-backed models.
+    """
+
+    actions = None
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def has_view_permission(self, request, obj=None):
+        return True
+
+    def get_readonly_fields(self, request, obj=None) -> list[str]:
+        model_cls = cast(type[models.Model] | None, getattr(self, "model", None))
+        if model_cls is None:
+            return []
+        fields = [field.name for field in model_cls._meta.fields]
+        fields.extend(field.name for field in model_cls._meta.many_to_many)
+        return fields
+
+
+@admin.register(Project)
+class ProjectAdmin(admin.ModelAdmin):
+    list_display = (
+        "name",
+        "slug",
+        "outlier_method",
+        "start_date",
+        "end_date",
+        "experiments_count",
+        "collaborators_count",
+    )
+    search_fields = ("name", "slug", "description")
+    list_filter = ("outlier_method",)
+    readonly_fields = ("created_at", "updated_at")
+    filter_horizontal = ("collaborators",)
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        return qs.annotate(
+            _experiments_count=Count("experiments", distinct=True),
+            _collaborators_count=Count("collaborators", distinct=True),
+        )
+
+    @admin.display(description="Experiments")
+    def experiments_count(self, obj):
+        return getattr(obj, "_experiments_count", 0)
+
+    @admin.display(description="Collaborators")
+    def collaborators_count(self, obj):
+        return getattr(obj, "_collaborators_count", 0)
+
+
+@admin.register(Chemical)
+class ChemicalAdmin(admin.ModelAdmin):
+    list_display = ("name", "slug", "canonical", "experiments_count", "conditions_count")
+    search_fields = ("name", "slug", "description")
+    readonly_fields = ("created_at", "updated_at")
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        return qs.annotate(
+            _conditions_count=Count("conditions", distinct=True),
+            _experiments_count=Count("conditions__experiment", distinct=True),
+        )
+
+    @admin.display(description="Conditions")
+    def conditions_count(self, obj):
+        return getattr(obj, "_conditions_count", 0)
+
+    @admin.display(description="Experiments")
+    def experiments_count(self, obj):
+        return getattr(obj, "_experiments_count", 0)
+
+
+@admin.register(ConcentrationUnit)
+class ConcentrationUnitAdmin(admin.ModelAdmin):
+    list_display = ("name", "symbol", "slug", "canonical", "conditions_count")
+    search_fields = ("name", "slug", "symbol")
+    readonly_fields = ("created_at", "updated_at")
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        return qs.annotate(
+            _conditions_count=Count("conditions", distinct=True),
+        )
+
+    @admin.display(description="Conditions")
+    def conditions_count(self, obj):
+        return getattr(obj, "_conditions_count", 0)
+
+
+@admin.register(Experiment)
+class ExperimentAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
+    list_display = (
+        "code",
+        "project",
+        "status",
+        "sex",
+        "date",
+        "condition_count",
+        "well_count",
+        "parsed_at",
+    )
+    list_filter = ("status", "sex", "project")
+    search_fields = ("code", "researcher", "cell_line", "manufacturer")
+    list_select_related = ("project",)
+
+
+@admin.register(ExperimentFile)
+class ExperimentFileAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
+    list_display = ("experiment", "kind", "div", "file")
+    list_filter = ("kind",)
+    search_fields = ("file",)
+    list_select_related = ("experiment",)
+
+
+@admin.register(Condition)
+class ConditionAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
+    list_display = (
+        "name",
+        "experiment",
+        "chemical",
+        "concentration",
+        "unit",
+        "is_control",
+        "well_count",
+    )
+    list_filter = ("is_control", "experiment__project")
+    search_fields = ("name", "chemical__name")
+    list_select_related = ("experiment", "chemical", "unit")
+    readonly_fields = ("created_at", "updated_at")
+
+    @admin.display(description="Wells")
+    def well_count(self, obj):
+        wells = getattr(obj, "wells", None)
+        if not isinstance(wells, list):
+            return 0
+        return len(wells)
+
+
+@admin.register(NeuronalMetricsFrame)
+class NeuronalMetricsFrameAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
+    list_display = ("experiment", "div", "created_at")
+    search_fields = ("experiment__code",)
+    list_select_related = ("experiment",)
+
+    fieldsets = (
+        (None, {"fields": ("experiment", "div", "created_at", "updated_at")}),
+        (
+            "Metrics (baseline)",
+            {
+                "fields": ("metrics_baseline_table",),
+                "classes": ("collapse", "wide"),
+            },
+        ),
+        (
+            "QC (baseline)",
+            {
+                "fields": ("qc_table",),
+                "classes": ("collapse", "wide"),
+            },
+        ),
+        (
+            "Metrics (exposure)",
+            {
+                "fields": ("metrics_exposure_table",),
+                "classes": ("collapse", "wide"),
+            },
+        ),
+        (
+            "Metrics (ratio)",
+            {
+                "fields": ("metrics_ratio_table",),
+                "classes": ("wide",),
+            },
+        ),
+    )
+
+    class Media:
+        css = {"all": ("ntx/admin_metrics.css",)}
+
+    def get_readonly_fields(self, request, obj=None) -> list[str]:
+        fields = super().get_readonly_fields(request, obj)
+        fields.extend(
+            [
+                "metrics_baseline_table",
+                "metrics_exposure_table",
+                "metrics_ratio_table",
+                "qc_table",
+            ]
+        )
+        return fields
+
+    @admin.display(description="Metrics ratio")
+    def metrics_ratio_table(self, obj: NeuronalMetricsFrame) -> SafeString:
+        payload = MetricsPayload.model_construct(**cast(dict[str, Any], obj.metrics_json))
+        return _render_metrics_payload_table(payload, section="ratio")
+
+    @admin.display(description="Metrics baseline")
+    def metrics_baseline_table(self, obj: NeuronalMetricsFrame) -> SafeString:
+        payload = MetricsPayload.model_construct(**cast(dict[str, Any], obj.metrics_json))
+        return _render_metrics_payload_table(payload, section="baseline")
+
+    @admin.display(description="Metrics exposure")
+    def metrics_exposure_table(self, obj: NeuronalMetricsFrame) -> SafeString:
+        payload = MetricsPayload.model_construct(**cast(dict[str, Any], obj.metrics_json))
+        return _render_metrics_payload_table(payload, section="exposure")
+
+    @admin.display(description="QC baseline")
+    def qc_table(self, obj: NeuronalMetricsFrame) -> SafeString:
+        return _render_qc_json_table(obj.qc_json)

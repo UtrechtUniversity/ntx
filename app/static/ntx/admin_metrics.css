@@ -1,0 +1,46 @@
+.ntx-scroll-x {
+    overflow-x: auto;
+    max-width: 100%;
+}
+
+/*
+The Django admin change/view form uses a flex layout for each row
+(`.flex-container` wraps the label + value). Flex items default to `min-width: auto`,
+which prevents the readonly value column from shrinking to the available width.
+Because `.form-row` also sets `overflow: hidden`, wide tables get clipped instead
+of becoming scrollable. Allow the readonly column for our metrics rows to shrink.
+*/
+.form-row.field-metrics_baseline_table .readonly,
+.form-row.field-metrics_exposure_table .readonly,
+.form-row.field-metrics_ratio_table .readonly,
+.form-row.field-qc_table .readonly {
+    min-width: 0;
+}
+
+.ntx-metrics-table {
+    border-collapse: collapse;
+    white-space: nowrap;
+}
+
+.ntx-metrics-table th,
+.ntx-metrics-table td {
+    border: 1px solid var(--hairline-color, #dcdcdc);
+    padding: 2px 6px;
+}
+
+.ntx-metrics-table td {
+    text-align: right;
+}
+
+.ntx-metrics-table th {
+    font-weight: 600;
+    text-align: center;
+}
+
+.ntx-metrics-table th.ntx-metrics-sticky {
+    left: 0;
+    position: sticky;
+    text-align: left;
+    z-index: 1;
+    background: var(--body-bg, #fff);
+}

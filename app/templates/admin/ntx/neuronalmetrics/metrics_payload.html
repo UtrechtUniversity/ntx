@@ -1,0 +1,6 @@
+{% for section in sections %}
+  {% if section.title %}
+    <h4>{{ section.title }}</h4>
+  {% endif %}
+  {% include "admin/ntx/neuronalmetrics/metrics_table.html" with wells=section.wells rows=section.rows only %}
+{% endfor %}
