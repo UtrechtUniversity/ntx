@@ -3,14 +3,36 @@
 asgiref==3.11.0
     # via django
 django==5.2.9
-    # via -r requirements/base.in
+    # via
+    #   -r requirements/base.in
+    #   django-stubs
+    #   django-stubs-ext
 django-environ==0.12.0
     # via -r requirements/base.in
+django-stubs==5.2.8
+    # via -r requirements/dev.in
+django-stubs-ext==5.2.8
+    # via django-stubs
+pydantic==2.12.5
+    # via -r requirements/base.in
+pydantic-core==2.41.5
+    # via pydantic
 ruff==0.14.7
     # via -r requirements/dev.in
 sqlparse==0.5.4
     # via django
 ty==0.0.1a31
     # via -r requirements/dev.in
+types-pyyaml==6.0.12.20250915
+    # via django-stubs
+typing-extensions==4.15.0
+    # via
+    #   django-stubs
+    #   django-stubs-ext
+    #   pydantic
+    #   pydantic-core
+    #   typing-inspection
+typing-inspection==0.4.2
+    # via pydantic
 tzdata==2025.2 ; sys_platform == 'win32'
     # via django

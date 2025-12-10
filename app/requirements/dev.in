@@ -1,3 +1,4 @@
 -r base.in
+django-stubs
 ruff
 ty
