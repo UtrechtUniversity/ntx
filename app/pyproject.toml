@@ -1,0 +1,18 @@
+[tool.ruff]
+line-length = 100
+indent-width = 4
+
+[tool.ruff.lint]
+# Basic checks + imports + Django-specific rules
+select = ["E", "F", "I", "DJ"]
+
+[tool.ruff.format]
+# Use double quotes by default
+# The formatter will automatically:
+# - Use double quotes for docstrings (PEP 257)
+# - Use double quotes for triple-quoted strings (PEP 8)
+# - Switch to single quotes when it avoids escaping
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
+line-ending = "lf"
