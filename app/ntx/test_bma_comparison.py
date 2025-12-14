@@ -7,7 +7,7 @@ from typing import Iterable, TypeGuard
 
 import pytest
 
-from .analysis.control_normalization import normalize_ratios_to_control
+from .analysis.normalization import normalize_ratios_to_control
 from .ingest.bma import (
     load_bma_condition_normalized_to_control,
     load_bma_condition_ratios,
