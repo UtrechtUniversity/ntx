@@ -1,6 +1,8 @@
 [tool.ruff]
 line-length = 100
 indent-width = 4
+# Don't check/format auto-generated Django migrations
+exclude = ["**/migrations/**"]
 
 [tool.ruff.lint]
 # Basic checks + imports + Django-specific rules
@@ -16,3 +18,27 @@ quote-style = "double"
 indent-style = "space"
 docstring-code-format = true
 line-ending = "lf"
+
+[tool.pyright]
+include = [
+    "manage.py",
+    "ntx",
+    "ntxconfig",
+]
+exclude = [
+    "**/migrations",
+    "**/__pycache__",
+]
+defineConstant = { DEBUG = true }
+
+reportMissingImports = "error"
+
+pythonVersion = "3.14"
+pythonPlatform = "Linux"
+venvPath = "."
+venv = ".venv"
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "ntxconfig.settings.local"
+testpaths = ["ntx"]
+python_files = ["test_*.py"]

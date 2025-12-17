@@ -1,0 +1,22 @@
+<div class="ntx-scroll-x">
+  <table class="ntx-metrics-table">
+    <thead>
+      <tr>
+        <th class="ntx-metrics-sticky">Parameter</th>
+        {% for well in wells %}
+          <th>{{ well }}</th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+        <tr>
+          <th class="ntx-metrics-sticky">{{ row.param }}</th>
+          {% for cell in row.cells %}
+            <td>{{ cell }}</td>
+          {% endfor %}
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

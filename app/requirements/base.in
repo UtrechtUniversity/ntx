@@ -1,2 +1,8 @@
 Django
 django-environ
+pydantic
+openpyxl
+numpy
+polars
+scipy
+statsmodels
