@@ -68,6 +68,23 @@ def test_missing_date_raises(tmp_path: Path):
         parse_layout_xlsx(tmp_path)
 
 
+def test_parse_layout_date_dd_mm_yyyy(tmp_path: Path):
+    tmp_path = tmp_path / "dd_mm_yyyy.xlsx"
+    wb = Workbook()
+    ws = wb.active
+    if ws is None:
+        pytest.fail("Workbook has no active worksheet")
+    ws.append(["Date", "28/09/2023"])
+    ws.append(["Wells", 48])
+    ws.append(["Groups", None])
+    ws.append(["Control", "A1"])
+    ws.append(["0.1", "A2"])
+    wb.save(tmp_path)
+
+    layout = parse_layout_xlsx(tmp_path)
+    assert layout.date == date(2023, 9, 28)
+
+
 def test_duplicate_wells_raise(tmp_path: Path):
     tmp_path = tmp_path / "duplicate_wells.xlsx"
     wb = Workbook()

@@ -127,7 +127,7 @@ def _parse_date(value) -> date:
         return (base + timedelta(days=float(value))).date()
 
     text = str(value).strip()
-    for fmt in ("%Y-%m-%d", "%Y/%m/%d"):
+    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%d/%m/%Y", "%d-%m-%Y", "%d.%m.%Y"):
         try:
             return datetime.strptime(text, fmt).date()
         except ValueError:
