@@ -19,6 +19,7 @@ from .models import (
     ExperimentFile,
     NeuronalMetricsFrame,
     Project,
+    ExperimentIngest,
 )
 
 Numeric = float | int | None
@@ -221,6 +222,22 @@ class ExperimentAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     list_select_related = ("project",)
 
 
+@admin.register(ExperimentIngest)
+class ExperimentIngestAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "status",
+        "submission_method",
+        "created_at",
+        "layout_file",
+        "baseline_csv",
+        "exposure_csv",
+    )
+    list_filter = ("status", "submission_method")
+    readonly_fields = ("error_message", "created_at", "updated_at")
+
+
+
 @admin.register(ExperimentFile)
 class ExperimentFileAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     list_display = ("experiment", "kind", "div", "file")
@@ -324,3 +341,5 @@ class NeuronalMetricsFrameAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     @admin.display(description="QC baseline")
     def qc_table(self, obj: NeuronalMetricsFrame) -> SafeString:
         return _render_qc_json_table(obj.qc_json)
+    
+    

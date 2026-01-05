@@ -487,3 +487,36 @@ class NeuronalMetricsFrame(TimeStampedModel):
             raise ValidationError(
                 {"qc_json": "qc_json wells must match metrics_json wells (order matters)."}
             )
+        
+class ExperimentIngest(TimeStampedModel):
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "Pending"
+        PARSED = "PARSED", "Parsed"
+        INGESTED = "INGESTED", "Ingested"
+        ERROR = "ERROR", "Error"
+
+    class SubmissionMethod(models.TextChoices):
+        UPLOAD = "UPLOAD", "Upload"
+        DISCOVERED = "DISCOVERED", "Discovered"
+
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+    )
+    submission_method = models.CharField(
+        max_length=16,
+        choices=SubmissionMethod.choices,
+        default=SubmissionMethod.UPLOAD,
+    )
+    error_message = models.TextField(blank=True, default="")
+
+    layout_file = models.FileField(upload_to="ingest/layouts/")
+    baseline_csv = models.FileField(upload_to="ingest/baselines/")
+    exposure_csv = models.FileField(upload_to="ingest/exposures/")
+
+    def __str__(self) -> str:
+        return f"ExperimentIngest #{self.pk or 'new'} ({self.status})"
+
+
