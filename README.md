@@ -8,7 +8,7 @@ Examples use [uv](https://docs.astral.sh/uv/), but plain pip can be used.
 # Create/activate a virtual environment and install dependencies
 cd app
 uv python install 3.14
-uv venv
+uv venv --python 3.14 
 source .venv/bin/activate
 uv pip install -r requirements/dev.txt
 ```
