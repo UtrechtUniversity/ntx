@@ -8,6 +8,13 @@ from django.db import models
 from django.db.models import Count
 from django.template.loader import render_to_string
 from django.utils.safestring import SafeString, mark_safe
+from django.forms import Textarea
+from django import forms
+from django.core.exceptions import ValidationError
+from django.db import transaction
+import tempfile
+from ntx.metadata_utils.extract_metadata import collect_experiment_metadata_from_files
+
 
 from .metrics_metadata import METRIC_SECTIONS
 from .metrics_schema import MetricsPayload
@@ -20,6 +27,7 @@ from .models import (
     NeuronalMetricsFrame,
     Project,
     ExperimentIngest,
+    ExperimentIngestGroup,
 )
 
 Numeric = float | int | None
@@ -204,7 +212,6 @@ class ConcentrationUnitAdmin(admin.ModelAdmin):
     def conditions_count(self, obj):
         return getattr(obj, "_conditions_count", 0)
 
-
 @admin.register(Experiment)
 class ExperimentAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     list_display = (
@@ -222,20 +229,119 @@ class ExperimentAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     list_select_related = ("project",)
 
 
+
+# --- Ingest groups inline ---
+
+class ExperimentIngestGroupInline(admin.TabularInline):
+    model = ExperimentIngestGroup
+    extra = 0
+    fields = ("name", "compound", "dosage", "unit", "wells")
+    ordering = ("name",)
+    formfield_overrides = {
+        models.TextField: {"widget": Textarea(attrs={"rows": 2, "cols": 40, "style": "resize: horizontal;"})}
+    }
+
+
+class ExperimentIngestAdminForm(forms.ModelForm):
+    class Meta:
+        model = ExperimentIngest
+        fields = "__all__"
+
+    def clean_code(self):
+        """
+        Prevent accidentally clearing `code` on existing records.
+        - On ADD: we allow blank (it will be filled by parsing).
+        - On CHANGE: if the field is left empty, keep the existing value.
+        """
+        code = (self.cleaned_data.get("code") or "").strip() or None
+
+        # Editing existing object
+        if self.instance.pk:
+            if code is None and self.instance.code:
+                # User left it empty -> keep old value
+                return self.instance.code
+            return code
+
+        # New object: parsing will set it, so `None` is fine here
+        return code
+
+
 @admin.register(ExperimentIngest)
 class ExperimentIngestAdmin(admin.ModelAdmin):
-    list_display = (
-        "id",
-        "status",
-        "submission_method",
-        "created_at",
-        "layout_file",
-        "baseline_csv",
-        "exposure_csv",
-    )
-    list_filter = ("status", "submission_method")
+    form = ExperimentIngestAdminForm
+    list_display = ("id", "status", "submission_method", "code", "div", "chemical", "sex", "created_at")
+    list_filter = ("status", "submission_method", "sex")
+    search_fields = ("code", "chemical", "cell_line", "experimenter")
     readonly_fields = ("error_message", "created_at", "updated_at")
 
+    add_fieldsets = (
+        ("Uploads", {"fields": ("layout_file", "baseline_csv", "exposure_csv")}),
+    )
+
+    change_fieldsets = (
+        ("Status", {"fields": ("status", "submission_method", "created_at", "updated_at")}),
+        ("Uploads", {"fields": ("layout_file", "baseline_csv", "exposure_csv")}),
+        ("Parsed metadata (editable)", {
+            "fields": ("code", "sex", "div", "chemical", "cell_line", "experimenter", "date", "plate_number"),
+        }),
+        ("Layout summary (editable)", {"fields": ("layout_date", "layout_wells", "control_group")}),
+        ("Groups (editable JSON)", {"fields": ("layout_groups",)}),
+        ("Logs", {"fields": ("error_message",)}),
+    )
+
+    def get_fieldsets(self, request, obj=None):
+        return self.add_fieldsets if obj is None else self.change_fieldsets
+
+    def get_inlines(self, request, obj=None):
+        return [] if obj is None else [ExperimentIngestGroupInline]
+
+    def save_model(self, request, obj, form, change):
+        """
+        Let the model do parsing on create.
+        If parsing raises ValidationError, show it nicely in the admin instead of a 500.
+        """
+        try:
+            super().save_model(request, obj, form, change)
+        except ValidationError as e:
+            # attach model validation errors to the form
+            if hasattr(e, "message_dict"):
+                for field, msgs in e.message_dict.items():
+                    for msg in msgs:
+                        form.add_error(field if field in form.fields else None, msg)
+            else:
+                for msg in e.messages:
+                    form.add_error(None, msg)
+            return
+
+    def save_related(self, request, form, formsets, change):
+        """
+        After the ingest exists and has layout_groups, create inline rows once.
+        """
+        super().save_related(request, form, formsets, change)
+
+        obj: ExperimentIngest = form.instance
+        if change:
+            return  # don't auto-overwrite on edits
+
+        groups = obj.layout_groups or []
+        if not isinstance(groups, list):
+            return
+
+        obj.ingest_groups.all().delete()
+        for g in groups:
+            if not isinstance(g, dict):
+                continue
+            name = (g.get("name") or "").strip()
+            if not name:
+                continue
+            ExperimentIngestGroup.objects.create(
+                ingest=obj,
+                name=name,
+                compound=(g.get("compound") or ""),
+                dosage=g.get("dosage"),
+                unit=(g.get("unit") or ""),
+                wells=(g.get("wells") or ""),
+            )
 
 
 @admin.register(ExperimentFile)

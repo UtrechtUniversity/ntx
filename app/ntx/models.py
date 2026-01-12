@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
-from django.db import models
+from django.db import models, transaction
 from django.db.models import Q
+from django.utils import timezone
 from django.utils.text import slugify
+from django.core.exceptions import ValidationError
 from pydantic import ValidationError as PydanticValidationError
 from pydantic_core import ErrorDetails
+import tempfile
 
 from .metrics_schema import MetricsPayload, MetricsQcPayload
 from .utils import sanitize_numeric_json
@@ -17,6 +20,7 @@ from .utils import sanitize_numeric_json
 User = get_user_model()
 
 WELL_RE = re.compile(r"^[A-Za-z](\d+)$")
+DIV_NUM_RE = re.compile(r"DIV\s*(\d+)", re.IGNORECASE)
 
 
 def _normalize_well(well: str) -> str:
@@ -115,7 +119,6 @@ class Project(TimeStampedModel):
     )
 
     class Meta(TimeStampedModel.Meta):
-        abstract = False
         ordering = ["name"]
 
     def __str__(self) -> str:
@@ -145,9 +148,6 @@ class CanonicalMixin(models.Model):
         self._validate_canonical_chain()
 
     def _validate_canonical_root(self):
-        """
-        Enforce that aliases point directly to a canonical record.
-        """
         canonical = getattr(self, "canonical", None)
         if canonical is None:
             return
@@ -157,9 +157,6 @@ class CanonicalMixin(models.Model):
             )
 
     def _validate_canonical_chain(self):
-        """
-        Ensure the canonical relationship does not form a cycle.
-        """
         current: "CanonicalMixin | None" = getattr(self, "canonical", None)
         if current is None:
             return
@@ -184,7 +181,6 @@ class Chemical(CanonicalMixin, TimeStampedModel):
     description = models.TextField(blank=True)
 
     class Meta(CanonicalMixin.Meta, TimeStampedModel.Meta):
-        abstract = False
         ordering = ["name"]
         constraints = [
             models.CheckConstraint(
@@ -208,7 +204,6 @@ class ConcentrationUnit(CanonicalMixin, TimeStampedModel):
     symbol = models.CharField(max_length=16, blank=True)
 
     class Meta(CanonicalMixin.Meta, TimeStampedModel.Meta):
-        abstract = False
         ordering = ["name"]
         constraints = [
             models.CheckConstraint(
@@ -246,12 +241,8 @@ class Experiment(TimeStampedModel):
         neuronal_metrics_frames: models.Manager["NeuronalMetricsFrame"]
 
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="experiments")
-    code = models.CharField(max_length=128)
-    sex = models.CharField(
-        max_length=1,
-        choices=Sex.choices,
-        default=Sex.UNKNOWN,
-    )
+    code = models.CharField(max_length=128, blank=True, null=True, unique=True)
+    sex = models.CharField(max_length=1, choices=Sex.choices, default=Sex.UNKNOWN)
     researcher = models.CharField(max_length=255, blank=True)
     date = models.DateField(null=True, blank=True)
     cell_line = models.CharField(max_length=128, blank=True)
@@ -272,22 +263,13 @@ class Experiment(TimeStampedModel):
     well_count = models.PositiveIntegerField(default=0)
     condition_count = models.PositiveIntegerField(default=0)
     knockout_stats = models.JSONField(default=dict, blank=True)
-    status = models.CharField(
-        max_length=16,
-        choices=ExperimentStatus.choices,
-        default=ExperimentStatus.CREATED,
-    )
+    status = models.CharField(max_length=16, choices=ExperimentStatus.choices, default=ExperimentStatus.CREATED)
 
     class Meta(TimeStampedModel.Meta):
-        abstract = False
         ordering = ["-date", "code"]
-        indexes = [
-            models.Index(fields=["project", "date"], name="experiment_project_date_idx"),
-        ]
+        indexes = [models.Index(fields=["project", "date"], name="experiment_project_date_idx")]
         constraints = [
-            models.UniqueConstraint(
-                fields=["project", "code"], name="experiment_project_code_unique"
-            )
+            models.UniqueConstraint(fields=["project", "code"], name="experiment_project_code_unique")
         ]
 
     def __str__(self) -> str:
@@ -303,15 +285,10 @@ class ExperimentFile(TimeStampedModel):
 
     experiment = models.ForeignKey(Experiment, on_delete=models.CASCADE, related_name="files")
     file = models.FileField(max_length=500, upload_to="axion/")
-    kind = models.CharField(
-        max_length=32,
-        choices=FileKind.choices,
-        default=FileKind.OTHER,
-    )
+    kind = models.CharField(max_length=32, choices=FileKind.choices, default=FileKind.OTHER)
     div = models.PositiveIntegerField(null=True, blank=True)
 
     class Meta(TimeStampedModel.Meta):
-        abstract = False
         ordering = ["experiment_id", "id"]
 
     def __str__(self) -> str:
@@ -325,12 +302,7 @@ class Condition(TimeStampedModel):
     experiment = models.ForeignKey(Experiment, on_delete=models.CASCADE, related_name="conditions")
     name = models.CharField(max_length=255)
     chemical = models.ForeignKey(Chemical, on_delete=models.PROTECT, related_name="conditions")
-    concentration = models.DecimalField(
-        max_digits=12,
-        decimal_places=6,
-        null=True,
-        blank=True,
-    )
+    concentration = models.DecimalField(max_digits=12, decimal_places=6, null=True, blank=True)
     unit = models.ForeignKey(
         ConcentrationUnit,
         on_delete=models.PROTECT,
@@ -342,32 +314,22 @@ class Condition(TimeStampedModel):
     wells = models.JSONField(default=list, blank=True)
 
     class Meta(TimeStampedModel.Meta):
-        abstract = False
         ordering = ["name"]
         constraints = [
             models.UniqueConstraint(
-                fields=[
-                    "experiment",
-                    "name",
-                    "concentration",
-                    "unit",
-                ],
+                fields=["experiment", "name", "concentration", "unit"],
                 name="condition_unique_per_experiment",
                 nulls_distinct=False,
             )
         ]
-        indexes = [
-            models.Index(
-                fields=["experiment", "is_control"],
-                name="cond_exp_ctrl_idx",
-            )
-        ]
+        indexes = [models.Index(fields=["experiment", "is_control"], name="cond_exp_ctrl_idx")]
 
     def __str__(self) -> str:
         return self.name
 
     def clean(self):
         super().clean()
+
         duplicate_qs = Condition.objects.filter(
             experiment=self.experiment,
             name=self.name,
@@ -414,7 +376,6 @@ class Condition(TimeStampedModel):
             other_wells = other.wells
             if not isinstance(other_wells, list):
                 continue
-
             overlap = new_wells.intersection(other_wells)
             if overlap:
                 raise ValidationError(
@@ -439,15 +400,12 @@ class NeuronalMetricsFrame(TimeStampedModel):
     qc_json = models.JSONField(default=dict, blank=True)
 
     class Meta(TimeStampedModel.Meta):
-        abstract = False
         verbose_name = "Neuronal metrics frame"
         verbose_name_plural = "Neuronal metrics frames"
         ordering = ["experiment_id", "div"]
         indexes = [models.Index(fields=["experiment", "div"], name="neur_metrics_exp_div_idx")]
         constraints = [
-            models.UniqueConstraint(
-                fields=["experiment", "div"], name="neur_metrics_frame_exp_div_unique"
-            )
+            models.UniqueConstraint(fields=["experiment", "div"], name="neur_metrics_frame_exp_div_unique")
         ]
 
     def __str__(self) -> str:
@@ -455,10 +413,7 @@ class NeuronalMetricsFrame(TimeStampedModel):
 
     def clean(self):
         super().clean()
-        # Ensure metrics_json and qc_json match their Pydantic contracts before saving.
-        # JSON/JSONB cannot represent NaN/Inf; store missing/unusable as null.
-        # Knockouts are represented separately (ratio == -1) and handled in analysis.
-        # In ingestion, detect/log non-finite values *before* sanitizing for easier debugging.
+
         errors: dict[str, list[ErrorDetails]] = {}
 
         sanitized_metrics = sanitize_numeric_json(self.metrics_json)
@@ -487,7 +442,20 @@ class NeuronalMetricsFrame(TimeStampedModel):
             raise ValidationError(
                 {"qc_json": "qc_json wells must match metrics_json wells (order matters)."}
             )
-        
+
+
+# ---------------------------
+# Staging / ingestion models
+# ---------------------------
+
+def _first_present(d: dict[str, Any], *keys: str) -> str | None:
+    for k in keys:
+        v = d.get(k)
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+    return None
+
+
 class ExperimentIngest(TimeStampedModel):
     class Status(models.TextChoices):
         PENDING = "PENDING", "Pending"
@@ -499,24 +467,218 @@ class ExperimentIngest(TimeStampedModel):
         UPLOAD = "UPLOAD", "Upload"
         DISCOVERED = "DISCOVERED", "Discovered"
 
-    status = models.CharField(
-        max_length=16,
-        choices=Status.choices,
-        default=Status.PENDING,
-        db_index=True,
-    )
-    submission_method = models.CharField(
-        max_length=16,
-        choices=SubmissionMethod.choices,
-        default=SubmissionMethod.UPLOAD,
-    )
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING, db_index=True)
+    submission_method = models.CharField(max_length=16, choices=SubmissionMethod.choices, default=SubmissionMethod.UPLOAD)
     error_message = models.TextField(blank=True, default="")
 
-    layout_file = models.FileField(upload_to="ingest/layouts/")
-    baseline_csv = models.FileField(upload_to="ingest/baselines/")
-    exposure_csv = models.FileField(upload_to="ingest/exposures/")
+    # Uploaded files
+    layout_file = models.FileField(upload_to="ingest/layouts/", max_length=500)
+    baseline_csv = models.FileField(upload_to="ingest/baselines/", max_length=500)
+    exposure_csv = models.FileField(upload_to="ingest/exposures/", max_length=500)
+
+    # Parsed / editable overrides
+    code = models.CharField(max_length=128, blank=True, null=True, unique=True)
+    sex = models.CharField(max_length=1, choices=Sex.choices, default=Sex.UNKNOWN)
+    div = models.PositiveIntegerField(null=True, blank=True)
+    chemical = models.CharField(max_length=255, blank=True, default="")
+    cell_line = models.CharField(max_length=128, blank=True, default="")
+    experimenter = models.CharField(max_length=255, blank=True, default="")
+    date = models.DateField(null=True, blank=True)
+    plate_number = models.CharField(max_length=64, blank=True, default="")
+
+    # Layout summary
+    layout_date = models.DateField(null=True, blank=True)
+    layout_wells = models.PositiveIntegerField(null=True, blank=True)
+    control_group = models.CharField(max_length=255, blank=True, default="")
+
+    # Groups only (editable JSON)
+    layout_groups = models.JSONField(null=True, blank=True, default=list)
+
+    # Debug / cache
+    layout_input = models.JSONField(null=True, blank=True)
+    parsed_meta = models.JSONField(null=True, blank=True)
+
+    class Meta(TimeStampedModel.Meta):
+        ordering = ["-created_at", "id"]
 
     def __str__(self) -> str:
         return f"ExperimentIngest #{self.pk or 'new'} ({self.status})"
 
+    def save(self, *args, **kwargs):
+        """
+        Creation: save, then parse files and update fields.
+        Update: just save, do NOT re-parse automatically.
+        """
+        creating = self.pk is None
+
+        # First save: ensures uploaded files are on disk and .path works
+        super().save(*args, **kwargs)
+
+        if not creating:
+            # For existing records, we don't auto-parse here
+            return
+
+        try:
+            self.parse_files()
+            self.status = self.Status.PARSED
+            self.error_message = ""
+        except ValidationError:
+            # Let admin show this as a form error
+            raise
+        except Exception as e:
+            # Unexpected errors: keep row but mark as ERROR
+            self.status = self.Status.ERROR
+            self.error_message = str(e)
+
+        # Persist parsed fields (or error status)
+        super().save(
+            update_fields=[
+                "status",
+                "error_message",
+                "code",
+                "sex",
+                "div",
+                "chemical",
+                "cell_line",
+                "experimenter",
+                "date",
+                "plate_number",
+                "layout_date",
+                "layout_wells",
+                "control_group",
+                "layout_groups",
+                "layout_input",
+                "parsed_meta",
+                "updated_at",
+            ]
+        )
+
+    def populate_from_files(self) -> None:
+        """
+        Parse layout + filenames and populate staging fields.
+        """
+        from ntx.metadata_utils.extract_metadata import collect_experiment_metadata_from_files
+
+        merged = collect_experiment_metadata_from_files(
+            layout_file=self.layout_file.path,
+            baseline_file=self.baseline_csv.path,
+            exposure_file=self.exposure_csv.path,
+        )
+
+        # --- extract code robustly ---
+        code = _first_present(
+            merged,
+            "experiment_id",
+            "code",
+            "experiment",
+            "experiment_code",
+            "experimentId",
+            "ExperimentID",
+        )
+
+        # nested fallback (common)
+        if not code:
+            code = _first_present(merged.get("baseline_filename_meta") or {}, "experiment_id", "code")
+        if not code:
+            code = _first_present(merged.get("exposure_filename_meta") or {}, "experiment_id", "code")
+
+        if not code:
+            raise ValidationError({"layout_file": "Could not extract experiment_id (code) from the uploaded files."})
+
+        # uniqueness check
+        if ExperimentIngest.objects.filter(code=code).exclude(pk=self.pk).exists():
+            raise ValidationError({"code": f"Experiment with code '{code}' already exists."})
+
+        self.code = code
+
+        # sex
+        sex_token = (merged.get("sex") or "").lower()
+        if "female" in sex_token:
+            self.sex = Sex.FEMALE
+        elif "male" in sex_token:
+            self.sex = Sex.MALE
+        else:
+            self.sex = Sex.UNKNOWN
+
+        # div
+        div_token = merged.get("div")
+        if isinstance(div_token, str):
+            m = DIV_NUM_RE.search(div_token)
+            self.div = int(m.group(1)) if m else None
+        else:
+            self.div = None
+
+        # misc
+        self.chemical = merged.get("compound") or ""
+        self.cell_line = merged.get("type_of_cells") or ""
+        self.experimenter = merged.get("experimenter") or ""
+        self.plate_number = merged.get("plate_number") or ""
+
+        # date
+        date_str = merged.get("date")
+        if isinstance(date_str, str) and date_str:
+            try:
+                self.date = timezone.datetime.fromisoformat(date_str).date()
+            except Exception:
+                self.date = None
+        else:
+            self.date = None
+
+        # layout meta
+        layout_meta: dict[str, Any] = merged.get("layout_meta") or {}
+        self.layout_input = layout_meta
+
+        layout_date_str = layout_meta.get("date")
+        if isinstance(layout_date_str, str) and layout_date_str:
+            try:
+                self.layout_date = timezone.datetime.fromisoformat(layout_date_str).date()
+            except Exception:
+                self.layout_date = None
+        else:
+            self.layout_date = None
+
+        wells_val = layout_meta.get("wells")
+        try:
+            self.layout_wells = int(wells_val) if wells_val is not None else None
+        except Exception:
+            self.layout_wells = None
+
+        self.control_group = layout_meta.get("control_group") or ""
+
+        groups_list = layout_meta.get("groups") or []
+        self.layout_groups = groups_list if isinstance(groups_list, list) else []
+
+        self.parsed_meta = {
+            "baseline_filename_meta": merged.get("baseline_filename_meta"),
+            "exposure_filename_meta": merged.get("exposure_filename_meta"),
+            "layout_meta": layout_meta,
+        }
+
+    def parse_files(self) -> None:
+        """
+        Backwards-compatible wrapper used by save().
+        """
+        self.populate_from_files()
+
+
+class ExperimentIngestGroup(TimeStampedModel):
+    ingest = models.ForeignKey(
+        ExperimentIngest,
+        on_delete=models.CASCADE,
+        related_name="ingest_groups",
+    )
+    name = models.CharField(max_length=255)
+    compound = models.CharField(max_length=255, blank=True, default="")
+    dosage = models.FloatField(null=True, blank=True)
+    unit = models.CharField(max_length=32, blank=True, default="")
+    wells = models.TextField(blank=True, default="", help_text="Space-separated wells, e.g. A1 A2 A3")
+
+    class Meta(TimeStampedModel.Meta):
+        ordering = ["name"]
+        constraints = [
+            models.UniqueConstraint(fields=["ingest", "name"], name="unique_ingest_group_name")
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.ingest.code or self.ingest_id}: {self.name}"
 
