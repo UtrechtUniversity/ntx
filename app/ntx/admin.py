@@ -30,6 +30,15 @@ from .models import (
     ExperimentIngestGroup,
 )
 
+import os
+import tempfile
+
+from .models import ExperimentIngest, ExperimentIngestGroup
+from .models import Sex, _first_present, DIV_NUM_RE
+
+from ntx.metadata_utils.extract_metadata import collect_experiment_metadata_from_files
+
+
 Numeric = float | int | None
 
 
@@ -250,25 +259,23 @@ class ExperimentIngestAdminForm(forms.ModelForm):
     def clean_code(self):
         """
         Prevent accidentally clearing `code` on existing records.
-        - On ADD: we allow blank (it will be filled by parsing).
+        - On ADD: we allow blank (it will be filled by model parsing).
         - On CHANGE: if the field is left empty, keep the existing value.
         """
         code = (self.cleaned_data.get("code") or "").strip() or None
 
-        # Editing existing object
         if self.instance.pk:
             if code is None and self.instance.code:
-                # User left it empty -> keep old value
                 return self.instance.code
             return code
 
-        # New object: parsing will set it, so `None` is fine here
+        # New object: model parsing will set it, so `None` is fine here
         return code
-
 
 @admin.register(ExperimentIngest)
 class ExperimentIngestAdmin(admin.ModelAdmin):
     form = ExperimentIngestAdminForm
+    exclude = ("layout_groups",)
     list_display = ("id", "status", "submission_method", "code", "div", "chemical", "sex", "created_at")
     list_filter = ("status", "submission_method", "sex")
     search_fields = ("code", "chemical", "cell_line", "experimenter")
@@ -279,15 +286,15 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
     )
 
     change_fieldsets = (
+        ("Logs", {"fields": ("error_message",)}),
         ("Status", {"fields": ("status", "submission_method", "created_at", "updated_at")}),
         ("Uploads", {"fields": ("layout_file", "baseline_csv", "exposure_csv")}),
         ("Parsed metadata (editable)", {
             "fields": ("code", "sex", "div", "chemical", "cell_line", "experimenter", "date", "plate_number"),
         }),
         ("Layout summary (editable)", {"fields": ("layout_date", "layout_wells", "control_group")}),
-        ("Groups (editable JSON)", {"fields": ("layout_groups",)}),
-        ("Logs", {"fields": ("error_message",)}),
     )
+
 
     def get_fieldsets(self, request, obj=None):
         return self.add_fieldsets if obj is None else self.change_fieldsets
@@ -303,7 +310,6 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
         try:
             super().save_model(request, obj, form, change)
         except ValidationError as e:
-            # attach model validation errors to the form
             if hasattr(e, "message_dict"):
                 for field, msgs in e.message_dict.items():
                     for msg in msgs:
@@ -314,9 +320,6 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
             return
 
     def save_related(self, request, form, formsets, change):
-        """
-        After the ingest exists and has layout_groups, create inline rows once.
-        """
         super().save_related(request, form, formsets, change)
 
         obj: ExperimentIngest = form.instance

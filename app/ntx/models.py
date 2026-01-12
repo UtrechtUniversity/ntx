@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from typing import TYPE_CHECKING, Any
+import os
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
@@ -12,10 +13,11 @@ from django.utils.text import slugify
 from django.core.exceptions import ValidationError
 from pydantic import ValidationError as PydanticValidationError
 from pydantic_core import ErrorDetails
-import tempfile
 
 from .metrics_schema import MetricsPayload, MetricsQcPayload
 from .utils import sanitize_numeric_json
+from ntx.metadata_utils.extract_metadata import collect_experiment_metadata_from_files
+
 
 User = get_user_model()
 
@@ -448,6 +450,7 @@ class NeuronalMetricsFrame(TimeStampedModel):
 # Staging / ingestion models
 # ---------------------------
 
+
 def _first_present(d: dict[str, Any], *keys: str) -> str | None:
     for k in keys:
         v = d.get(k)
@@ -504,60 +507,13 @@ class ExperimentIngest(TimeStampedModel):
     def __str__(self) -> str:
         return f"ExperimentIngest #{self.pk or 'new'} ({self.status})"
 
-    def save(self, *args, **kwargs):
-        """
-        Creation: save, then parse files and update fields.
-        Update: just save, do NOT re-parse automatically.
-        """
-        creating = self.pk is None
-
-        # First save: ensures uploaded files are on disk and .path works
-        super().save(*args, **kwargs)
-
-        if not creating:
-            # For existing records, we don't auto-parse here
-            return
-
-        try:
-            self.parse_files()
-            self.status = self.Status.PARSED
-            self.error_message = ""
-        except ValidationError:
-            # Let admin show this as a form error
-            raise
-        except Exception as e:
-            # Unexpected errors: keep row but mark as ERROR
-            self.status = self.Status.ERROR
-            self.error_message = str(e)
-
-        # Persist parsed fields (or error status)
-        super().save(
-            update_fields=[
-                "status",
-                "error_message",
-                "code",
-                "sex",
-                "div",
-                "chemical",
-                "cell_line",
-                "experimenter",
-                "date",
-                "plate_number",
-                "layout_date",
-                "layout_wells",
-                "control_group",
-                "layout_groups",
-                "layout_input",
-                "parsed_meta",
-                "updated_at",
-            ]
-        )
-
     def populate_from_files(self) -> None:
         """
         Parse layout + filenames and populate staging fields.
+        Uses actual stored file paths (so original filenames are preserved).
         """
-        from ntx.metadata_utils.extract_metadata import collect_experiment_metadata_from_files
+        if not (self.layout_file and self.baseline_csv and self.exposure_csv):
+            raise ValidationError({"layout_file": "All three files must be uploaded."})
 
         merged = collect_experiment_metadata_from_files(
             layout_file=self.layout_file.path,
@@ -583,11 +539,15 @@ class ExperimentIngest(TimeStampedModel):
             code = _first_present(merged.get("exposure_filename_meta") or {}, "experiment_id", "code")
 
         if not code:
-            raise ValidationError({"layout_file": "Could not extract experiment_id (code) from the uploaded files."})
+            raise ValidationError(
+                {"layout_file": "Could not extract experiment_id (code) from the uploaded files."}
+            )
 
-        # uniqueness check
+        # uniqueness check (exclude self to allow re-saving same row)
         if ExperimentIngest.objects.filter(code=code).exclude(pk=self.pk).exists():
-            raise ValidationError({"code": f"Experiment with code '{code}' already exists."})
+            raise ValidationError(
+                {"code": f"Experiment with code '{code}' already exists."}
+            )
 
         self.code = code
 
@@ -654,12 +614,55 @@ class ExperimentIngest(TimeStampedModel):
             "layout_meta": layout_meta,
         }
 
-    def parse_files(self) -> None:
+    def save(self, *args, **kwargs):
         """
-        Backwards-compatible wrapper used by save().
+        Creation: save, then parse files and update fields, in a transaction.
+        Update: just save, do NOT re-parse automatically.
         """
-        self.populate_from_files()
+        creating = self.pk is None
 
+        with transaction.atomic():
+            # First save: ensures uploaded files are on disk and .path works
+            super().save(*args, **kwargs)
+
+            if not creating:
+                # For existing records, we don't auto-parse here
+                return
+
+            try:
+                self.populate_from_files()
+                self.status = self.Status.PARSED
+                self.error_message = ""
+            except ValidationError:
+                # Let admin show this as a form error; rollback entire transaction
+                raise
+            except Exception as e:
+                # Unexpected errors: keep row but mark as ERROR
+                self.status = self.Status.ERROR
+                self.error_message = str(e)
+
+            # Persist parsed fields (or error status)
+            super().save(
+                update_fields=[
+                    "status",
+                    "error_message",
+                    "code",
+                    "sex",
+                    "div",
+                    "chemical",
+                    "cell_line",
+                    "experimenter",
+                    "date",
+                    "plate_number",
+                    "layout_date",
+                    "layout_wells",
+                    "control_group",
+                    "layout_groups",
+                    "layout_input",
+                    "parsed_meta",
+                    "updated_at",
+                ]
+            )
 
 class ExperimentIngestGroup(TimeStampedModel):
     ingest = models.ForeignKey(
