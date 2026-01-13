@@ -532,24 +532,41 @@ class ExperimentIngest(TimeStampedModel):
             "ExperimentID",
         )
 
-        # nested fallback (common)
-        if not code:
-            code = _first_present(merged.get("baseline_filename_meta") or {}, "experiment_id", "code")
-        if not code:
-            code = _first_present(merged.get("exposure_filename_meta") or {}, "experiment_id", "code")
-
         if not code:
             raise ValidationError(
                 {"layout_file": "Could not extract experiment_id (code) from the uploaded files."}
             )
+        
+        # ---- DUPLICATE CHECK ACROSS BOTH TABLES ----
+        # 1) Staging / ExperimentIngest
+        ingest_exists = ExperimentIngest.objects.filter(code=code).exclude(pk=self.pk).exists()
 
-        # uniqueness check (exclude self to allow re-saving same row)
-        if ExperimentIngest.objects.filter(code=code).exclude(pk=self.pk).exists():
+        # 2) Final / Experiment
+        experiment_exists = Experiment.objects.filter(code=code).exists()
+
+        if ingest_exists or experiment_exists:
+            # attach error to layout_file so it shows up nicely on the upload form
             raise ValidationError(
-                {"code": f"Experiment with code '{code}' already exists."}
+                {
+                    "layout_file": (
+                        f"Experiment with code '{code}' already exists in the dataset; "
+                        "re-upload is not allowed."
+                    )
+                }
             )
 
+        # Only set code if we pass the duplicate checks
         self.code = code
+
+        # # Uniqueness check (exclude self to allow re-saving same row)
+        # if ExperimentIngest.objects.filter(code=code).exclude(pk=self.pk).exists():
+        #     raise ValidationError(
+        #         {"code": f"Experiment with code '{code}' already exists."}
+        #     )
+
+        # self.code = code
+
+
 
         # sex
         sex_token = (merged.get("sex") or "").lower()
@@ -663,6 +680,7 @@ class ExperimentIngest(TimeStampedModel):
                     "updated_at",
                 ]
             )
+
 
 class ExperimentIngestGroup(TimeStampedModel):
     ingest = models.ForeignKey(

@@ -256,10 +256,15 @@ class ExperimentIngestAdminForm(forms.ModelForm):
         model = ExperimentIngest
         fields = "__all__"
 
+    def clean(self):
+        # Just run the default validation; do NOT parse files here.
+        cleaned_data = super().clean()
+        return cleaned_data
+
     def clean_code(self):
         """
         Prevent accidentally clearing `code` on existing records.
-        - On ADD: we allow blank (it will be filled by model parsing).
+        - On ADD: we allow blank (it will be set by `populate_from_files`).
         - On CHANGE: if the field is left empty, keep the existing value.
         """
         code = (self.cleaned_data.get("code") or "").strip() or None
@@ -269,8 +274,8 @@ class ExperimentIngestAdminForm(forms.ModelForm):
                 return self.instance.code
             return code
 
-        # New object: model parsing will set it, so `None` is fine here
         return code
+
 
 @admin.register(ExperimentIngest)
 class ExperimentIngestAdmin(admin.ModelAdmin):
@@ -301,23 +306,6 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
 
     def get_inlines(self, request, obj=None):
         return [] if obj is None else [ExperimentIngestGroupInline]
-
-    def save_model(self, request, obj, form, change):
-        """
-        Let the model do parsing on create.
-        If parsing raises ValidationError, show it nicely in the admin instead of a 500.
-        """
-        try:
-            super().save_model(request, obj, form, change)
-        except ValidationError as e:
-            if hasattr(e, "message_dict"):
-                for field, msgs in e.message_dict.items():
-                    for msg in msgs:
-                        form.add_error(field if field in form.fields else None, msg)
-            else:
-                for msg in e.messages:
-                    form.add_error(None, msg)
-            return
 
     def save_related(self, request, form, formsets, change):
         super().save_related(request, form, formsets, change)
