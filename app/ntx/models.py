@@ -522,6 +522,7 @@ class ExperimentIngest(TimeStampedModel):
         )
 
         # --- extract code robustly ---
+                # --- extract code robustly ---
         code = _first_present(
             merged,
             "experiment_id",
@@ -532,39 +533,16 @@ class ExperimentIngest(TimeStampedModel):
             "ExperimentID",
         )
 
+        # NOTE: We no longer raise ValidationError here for user-facing issues.
+        # The admin form will already have checked "no code" and duplicates.
+        # If code is still missing here, mark as ERROR and stop.
         if not code:
-            raise ValidationError(
-                {"layout_file": "Could not extract experiment_id (code) from the uploaded files."}
-            )
-        
-        # ---- DUPLICATE CHECK ACROSS BOTH TABLES ----
-        # 1) Staging / ExperimentIngest
-        ingest_exists = ExperimentIngest.objects.filter(code=code).exclude(pk=self.pk).exists()
+            self.status = self.Status.ERROR
+            self.error_message = "Could not extract experiment_id (code) from the uploaded files."
+            return
 
-        # 2) Final / Experiment
-        experiment_exists = Experiment.objects.filter(code=code).exists()
-
-        if ingest_exists or experiment_exists:
-            # attach error to layout_file so it shows up nicely on the upload form
-            raise ValidationError(
-                {
-                    "layout_file": (
-                        f"Experiment with code '{code}' already exists in the dataset; "
-                        "re-upload is not allowed."
-                    )
-                }
-            )
-
-        # Only set code if we pass the duplicate checks
+        # At this point, admin form has guaranteed that this code is not a duplicate.
         self.code = code
-
-        # # Uniqueness check (exclude self to allow re-saving same row)
-        # if ExperimentIngest.objects.filter(code=code).exclude(pk=self.pk).exists():
-        #     raise ValidationError(
-        #         {"code": f"Experiment with code '{code}' already exists."}
-        #     )
-
-        # self.code = code
 
 
 

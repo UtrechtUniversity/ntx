@@ -257,14 +257,103 @@ class ExperimentIngestAdminForm(forms.ModelForm):
         fields = "__all__"
 
     def clean(self):
-        # Just run the default validation; do NOT parse files here.
+        """
+        On ADD:
+        - Parse the uploaded files using temp copies that preserve original filenames.
+        - Extract the experiment code.
+        - If no code: show a friendly error.
+        - If duplicate in ExperimentIngest or Experiment: show a friendly error.
+        On CHANGE:
+        - Skip parsing (we don't auto-re-parse on edit).
+        """
         cleaned_data = super().clean()
+
+        # Only run this extra validation on ADD
+        if self.instance.pk:
+            return cleaned_data
+
+        layout_file = cleaned_data.get("layout_file")
+        baseline_csv = cleaned_data.get("baseline_csv")
+        exposure_csv = cleaned_data.get("exposure_csv")
+
+        # If some file is missing, let normal field validation complain
+        if not (layout_file and baseline_csv and exposure_csv):
+            return cleaned_data
+
+        import os
+        import tempfile
+
+        # Make a temp dir and write the uploads into it,
+        # but keep their *original* names to not break your parser.
+        tmp_dir = tempfile.mkdtemp()
+
+        def _write_with_original_name(uploaded):
+            dst_path = os.path.join(tmp_dir, uploaded.name)
+            with open(dst_path, "wb+") as f:
+                for chunk in uploaded.chunks():
+                    f.write(chunk)
+            return dst_path
+
+        layout_path = _write_with_original_name(layout_file)
+        baseline_path = _write_with_original_name(baseline_csv)
+        exposure_path = _write_with_original_name(exposure_csv)
+
+        # Parse metadata exactly as the model does
+        merged = collect_experiment_metadata_from_files(
+            layout_file=layout_path,
+            baseline_file=baseline_path,
+            exposure_file=exposure_path,
+        )
+
+        # --- extract code robustly (same as populate_from_files used to) ---
+        code = _first_present(
+            merged,
+            "experiment_id",
+            "code",
+            "experiment",
+            "experiment_code",
+            "experimentId",
+            "ExperimentID",
+        )
+
+        # keep the same fallbacks you had in the model previously if needed
+        if not code:
+            code = _first_present(merged.get("baseline_filename_meta") or {}, "experiment_id", "code")
+        if not code:
+            code = _first_present(merged.get("exposure_filename_meta") or {}, "experiment_id", "code")
+
+        if not code:
+            # Nice form error instead of 500
+            raise ValidationError(
+                {"layout_file": "Could not extract experiment_id (code) from the uploaded files."}
+            )
+
+        # Duplicate checks across both staging and final tables
+        from .models import Experiment, ExperimentIngest  # safe import here
+
+        ingest_exists = ExperimentIngest.objects.filter(code=code).exists()
+        experiment_exists = Experiment.objects.filter(code=code).exists()
+
+        if ingest_exists or experiment_exists:
+            raise ValidationError(
+                {
+                    "layout_file": (
+                        f"Experiment with code '{code}' already exists in the dataset; "
+                        "re-upload is not allowed."
+                    )
+                }
+            )
+
+        # Optional: pre-fill code into the form (not strictly necessary,
+        # since populate_from_files will set it again later using real paths)
+        # cleaned_data["code"] = code
+
         return cleaned_data
 
     def clean_code(self):
         """
         Prevent accidentally clearing `code` on existing records.
-        - On ADD: we allow blank (it will be set by `populate_from_files`).
+        - On ADD: we allow blank (it will be set by populate_from_files).
         - On CHANGE: if the field is left empty, keep the existing value.
         """
         code = (self.cleaned_data.get("code") or "").strip() or None
@@ -274,7 +363,9 @@ class ExperimentIngestAdminForm(forms.ModelForm):
                 return self.instance.code
             return code
 
+        # New object: model parsing will set it, so `None` is fine here
         return code
+
 
 
 @admin.register(ExperimentIngest)
