@@ -276,15 +276,12 @@ class ExperimentIngestAdminForm(forms.ModelForm):
         baseline_csv = cleaned_data.get("baseline_csv")
         exposure_csv = cleaned_data.get("exposure_csv")
 
-        # If some file is missing, let normal field validation complain
         if not (layout_file and baseline_csv and exposure_csv):
             return cleaned_data
 
         import os
         import tempfile
 
-        # Make a temp dir and write the uploads into it,
-        # but keep their *original* names to not break your parser.
         tmp_dir = tempfile.mkdtemp()
 
         def _write_with_original_name(uploaded):
@@ -298,14 +295,13 @@ class ExperimentIngestAdminForm(forms.ModelForm):
         baseline_path = _write_with_original_name(baseline_csv)
         exposure_path = _write_with_original_name(exposure_csv)
 
-        # Parse metadata exactly as the model does
         merged = collect_experiment_metadata_from_files(
             layout_file=layout_path,
             baseline_file=baseline_path,
             exposure_file=exposure_path,
         )
 
-        # --- extract code robustly (same as populate_from_files used to) ---
+        # --- extract code robustly (same as populate_from_files) ---
         code = _first_present(
             merged,
             "experiment_id",
@@ -315,21 +311,17 @@ class ExperimentIngestAdminForm(forms.ModelForm):
             "experimentId",
             "ExperimentID",
         )
-
-        # keep the same fallbacks you had in the model previously if needed
         if not code:
             code = _first_present(merged.get("baseline_filename_meta") or {}, "experiment_id", "code")
         if not code:
             code = _first_present(merged.get("exposure_filename_meta") or {}, "experiment_id", "code")
 
         if not code:
-            # Nice form error instead of 500
             raise ValidationError(
                 {"layout_file": "Could not extract experiment_id (code) from the uploaded files."}
             )
 
-        # Duplicate checks across both staging and final tables
-        from .models import Experiment, ExperimentIngest  # safe import here
+        from .models import Experiment, ExperimentIngest  # local import is fine
 
         ingest_exists = ExperimentIngest.objects.filter(code=code).exists()
         experiment_exists = Experiment.objects.filter(code=code).exists()
@@ -344,16 +336,75 @@ class ExperimentIngestAdminForm(forms.ModelForm):
                 }
             )
 
-        # Optional: pre-fill code into the form (not strictly necessary,
-        # since populate_from_files will set it again later using real paths)
-        # cleaned_data["code"] = code
+        # ---------
+        # NEW BIT: pre-fill simple metadata for PENDING rows
+        # ---------
+
+        # sex
+        sex_token = (merged.get("sex") or "").lower()
+        if "female" in sex_token:
+            sex = Sex.FEMALE
+        elif "male" in sex_token:
+            sex = Sex.MALE
+        else:
+            sex = Sex.UNKNOWN
+
+        # div
+        div = None
+        div_token = merged.get("div")
+        if isinstance(div_token, str):
+            m = DIV_NUM_RE.search(div_token)
+            if m:
+                try:
+                    div = int(m.group(1))
+                except ValueError:
+                    div = None
+
+        chemical = merged.get("compound") or ""
+        cell_line = merged.get("type_of_cells") or ""
+        experimenter = merged.get("experimenter") or ""
+        plate_number = merged.get("plate_number") or ""
+
+        # date
+        date = None
+        date_str = merged.get("date")
+        if isinstance(date_str, str) and date_str:
+            try:
+                date = timezone.datetime.fromisoformat(date_str).date()
+            except Exception:
+                date = None
+
+        # Push into cleaned_data so the model save sees it
+        cleaned_data.update(
+            {
+                "code": code,
+                "sex": sex,
+                "div": div,
+                "chemical": chemical,
+                "cell_line": cell_line,
+                "experimenter": experimenter,
+                "date": date,
+                "plate_number": plate_number,
+            }
+        )
+
+        # And into the instance (for consistency / later logic)
+        self.instance.code = code
+        self.instance.sex = sex
+        self.instance.div = div
+        self.instance.chemical = chemical
+        self.instance.cell_line = cell_line
+        self.instance.experimenter = experimenter
+        self.instance.date = date
+        self.instance.plate_number = plate_number
 
         return cleaned_data
+
 
     def clean_code(self):
         """
         Prevent accidentally clearing `code` on existing records.
-        - On ADD: we allow blank (it will be set by populate_from_files).
+        - On ADD: we allow blank (it will be set by populate_from_files / clean()).
         - On CHANGE: if the field is left empty, keep the existing value.
         """
         code = (self.cleaned_data.get("code") or "").strip() or None
@@ -363,7 +414,7 @@ class ExperimentIngestAdminForm(forms.ModelForm):
                 return self.instance.code
             return code
 
-        # New object: model parsing will set it, so `None` is fine here
+        # New object: code has already been set in clean(), but None is ok here
         return code
 
 
@@ -391,12 +442,41 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
         ("Layout summary (editable)", {"fields": ("layout_date", "layout_wells", "control_group")}),
     )
 
-
     def get_fieldsets(self, request, obj=None):
         return self.add_fieldsets if obj is None else self.change_fieldsets
 
     def get_inlines(self, request, obj=None):
         return [] if obj is None else [ExperimentIngestGroupInline]
+
+    def save_model(self, request, obj, form, change):
+        """
+        Control when parsing happens:
+
+        - ADD view:
+            * "_continue" (Save and continue editing)  -> parse now
+            * "_save" or "_addanother"                -> don't parse yet
+        - CHANGE view:
+            * if status == PENDING                    -> parse now on any save
+            * otherwise                               -> don't re-parse
+        """
+        should_parse = False
+
+        if not change:
+            # ADD view
+            if "_continue" in request.POST:
+                # Only "Save and continue editing" parses immediately
+                should_parse = True
+        else:
+            # CHANGE view
+            if obj.status == ExperimentIngest.Status.PENDING:
+                # When user opens a PENDING row and saves it, parse now
+                should_parse = True
+
+        if should_parse:
+            # Transient flag that models.ExperimentIngest.save() will look at
+            obj._should_parse = True
+
+        super().save_model(request, obj, form, change)
 
     def save_related(self, request, form, formsets, change):
         super().save_related(request, form, formsets, change)

@@ -611,28 +611,29 @@ class ExperimentIngest(TimeStampedModel):
 
     def save(self, *args, **kwargs):
         """
-        Creation: save, then parse files and update fields, in a transaction.
-        Update: just save, do NOT re-parse automatically.
+        Save the ingest row.
+
+        Parsing of the uploaded files is *optional* and only happens when the
+        transient attribute `_should_parse` is set to True on the instance
+        (e.g. by the admin, depending on which button was pressed).
         """
-        creating = self.pk is None
 
         with transaction.atomic():
-            # First save: ensures uploaded files are on disk and .path works
+            # First save: ensures uploaded files are on disk so .path works
             super().save(*args, **kwargs)
 
-            if not creating:
-                # For existing records, we don't auto-parse here
+            # Only parse when explicitly requested
+            if not getattr(self, "_should_parse", False):
                 return
 
             try:
+                # This will fill code/sex/div/... and layout_groups, etc.
                 self.populate_from_files()
                 self.status = self.Status.PARSED
                 self.error_message = ""
-            except ValidationError:
-                # Let admin show this as a form error; rollback entire transaction
-                raise
             except Exception as e:
-                # Unexpected errors: keep row but mark as ERROR
+                # Do NOT raise ValidationError here – that would crash the admin.
+                # Instead, mark this ingest as ERROR and store the message.
                 self.status = self.Status.ERROR
                 self.error_message = str(e)
 
@@ -658,7 +659,6 @@ class ExperimentIngest(TimeStampedModel):
                     "updated_at",
                 ]
             )
-
 
 class ExperimentIngestGroup(TimeStampedModel):
     ingest = models.ForeignKey(
