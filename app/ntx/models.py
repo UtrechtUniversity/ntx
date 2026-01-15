@@ -88,6 +88,9 @@ class OutlierMethod(models.TextChoices):
 
 
 class Project(TimeStampedModel):
+    if TYPE_CHECKING:
+        experiments: models.Manager["Experiment"]
+
     name = models.CharField(max_length=255)
     slug = models.SlugField(unique=True)
     description = models.TextField(blank=True)
