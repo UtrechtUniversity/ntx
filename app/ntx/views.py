@@ -27,7 +27,7 @@ def experiments_list(request):
         .prefetch_related(
             Prefetch(
                 "conditions",
-                queryset=Condition.objects.select_related("chemical").order_by("name"),
+                queryset=Condition.objects.select_related("chemical"),
             )
         )
         .all()
@@ -35,14 +35,15 @@ def experiments_list(request):
 
     experiment_rows: list[dict[str, object]] = []
     for experiment in experiments:
+        conditions = list(experiment.conditions.all())
         chemicals = {
             condition.chemical.name
-            for condition in experiment.conditions.all()
+            for condition in conditions
             if not condition.is_control
         }
         control_chemicals = {
             condition.chemical.name
-            for condition in experiment.conditions.all()
+            for condition in conditions
             if condition.is_control
         }
         experiment_rows.append(
