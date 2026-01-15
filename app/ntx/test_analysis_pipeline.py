@@ -111,7 +111,7 @@ def test_pipeline_normalizes_per_experiment():
         qc_json=_qc_payload(wells=["A1", "A2", "A3", "A4"]),
     )
 
-    analysis = run_experiment_analysis([exp1.id, exp2.id], ignore_exclusions=False)
+    analysis = run_experiment_analysis([exp1.id, exp2.id])
 
     values: dict[tuple[int, str], float | None] = {}
     for obs in analysis.pre_outlier:
@@ -172,7 +172,7 @@ def test_pipeline_masks_excluded_inactive_and_knockout():
         ),
     )
 
-    analysis = run_experiment_analysis([experiment.id], ignore_exclusions=False)
+    analysis = run_experiment_analysis([experiment.id])
 
     obs_by_well: dict[str, list] = {}
     for obs in analysis.pre_outlier:
@@ -238,7 +238,7 @@ def test_pipeline_masks_outliers_for_non_control_conditions():
         qc_json=_qc_payload(wells=["A1", "A2", "A3", "A4", "A5", "A6", "A7"]),
     )
 
-    analysis = run_experiment_analysis([experiment.id], ignore_exclusions=False)
+    analysis = run_experiment_analysis([experiment.id])
 
     outliers = [o for o in analysis.outliers if o.param == "mean_firing_rate" and o.well == "A7"]
     assert len(outliers) == 1

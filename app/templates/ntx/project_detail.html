@@ -11,9 +11,17 @@
           {{ project.start_date|date:"Y-m-d"|default:"—" }} – {{ project.end_date|date:"Y-m-d"|default:"—" }}
         </p>
       </div>
-      <a href="{% url 'ntx:projects' %}" class="text-sm font-medium text-slate-700 hover:underline">
-        Back to Projects
-      </a>
+      <div class="flex items-center gap-3 text-sm font-medium">
+        <a
+          href="{% url 'ntx:project_report' slug=project.slug %}"
+          class="rounded-xl border border-slate-300 px-3 py-2 text-slate-700 hover:bg-slate-50"
+        >
+          View report
+        </a>
+        <a href="{% url 'ntx:projects' %}" class="text-slate-700 hover:underline">
+          Back to Projects
+        </a>
+      </div>
     </div>
   </div>
 
