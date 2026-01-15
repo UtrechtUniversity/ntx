@@ -37,14 +37,10 @@ def experiments_list(request):
     for experiment in experiments:
         conditions = list(experiment.conditions.all())
         chemicals = {
-            condition.chemical.name
-            for condition in conditions
-            if not condition.is_control
+            condition.chemical.name for condition in conditions if not condition.is_control
         }
         control_chemicals = {
-            condition.chemical.name
-            for condition in conditions
-            if condition.is_control
+            condition.chemical.name for condition in conditions if condition.is_control
         }
         experiment_rows.append(
             {

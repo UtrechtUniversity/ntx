@@ -67,8 +67,7 @@ def test_project_detail_lists_experiments(client, project: Project, experiment: 
     assert [exp.pk for exp in experiments] == [experiment.pk]
     assert experiment.code in response.content.decode()
     assert (
-        reverse("ntx:experiment_detail", kwargs={"pk": experiment.pk})
-        in response.content.decode()
+        reverse("ntx:experiment_detail", kwargs={"pk": experiment.pk}) in response.content.decode()
     )
 
 
