@@ -446,11 +446,6 @@ class NeuronalMetricsFrame(TimeStampedModel):
             )
 
 
-# ---------------------------
-# Staging / ingestion models
-# ---------------------------
-
-
 def _first_present(d: dict[str, Any], *keys: str) -> str | None:
     for k in keys:
         v = d.get(k)
@@ -474,12 +469,10 @@ class ExperimentIngest(TimeStampedModel):
     submission_method = models.CharField(max_length=16, choices=SubmissionMethod.choices, default=SubmissionMethod.UPLOAD)
     error_message = models.TextField(blank=True, default="")
 
-    # Uploaded files
     layout_file = models.FileField(upload_to="ingest/layouts/", max_length=500)
     baseline_csv = models.FileField(upload_to="ingest/baselines/", max_length=500)
     exposure_csv = models.FileField(upload_to="ingest/exposures/", max_length=500)
 
-    # Parsed / editable overrides
     code = models.CharField(max_length=128, blank=True, null=True, unique=True)
     sex = models.CharField(max_length=1, choices=Sex.choices, default=Sex.UNKNOWN)
     div = models.PositiveIntegerField(null=True, blank=True)
@@ -489,15 +482,12 @@ class ExperimentIngest(TimeStampedModel):
     date = models.DateField(null=True, blank=True)
     plate_number = models.CharField(max_length=64, blank=True, default="")
 
-    # Layout summary
     layout_date = models.DateField(null=True, blank=True)
     layout_wells = models.PositiveIntegerField(null=True, blank=True)
     control_group = models.CharField(max_length=255, blank=True, default="")
 
-    # Groups only (editable JSON)
     layout_groups = models.JSONField(null=True, blank=True, default=list)
 
-    # Debug / cache
     layout_input = models.JSONField(null=True, blank=True)
     parsed_meta = models.JSONField(null=True, blank=True)
 
@@ -521,8 +511,6 @@ class ExperimentIngest(TimeStampedModel):
             exposure_file=self.exposure_csv.path,
         )
 
-        # --- extract code robustly ---
-                # --- extract code robustly ---
         code = _first_present(
             merged,
             "experiment_id",
@@ -533,20 +521,13 @@ class ExperimentIngest(TimeStampedModel):
             "ExperimentID",
         )
 
-        # NOTE: We no longer raise ValidationError here for user-facing issues.
-        # The admin form will already have checked "no code" and duplicates.
-        # If code is still missing here, mark as ERROR and stop.
         if not code:
             self.status = self.Status.ERROR
             self.error_message = "Could not extract experiment_id (code) from the uploaded files."
             return
 
-        # At this point, admin form has guaranteed that this code is not a duplicate.
         self.code = code
 
-
-
-        # sex
         sex_token = (merged.get("sex") or "").lower()
         if "female" in sex_token:
             self.sex = Sex.FEMALE
@@ -555,7 +536,6 @@ class ExperimentIngest(TimeStampedModel):
         else:
             self.sex = Sex.UNKNOWN
 
-        # div
         div_token = merged.get("div")
         if isinstance(div_token, str):
             m = DIV_NUM_RE.search(div_token)
@@ -563,13 +543,11 @@ class ExperimentIngest(TimeStampedModel):
         else:
             self.div = None
 
-        # misc
         self.chemical = merged.get("compound") or ""
         self.cell_line = merged.get("type_of_cells") or ""
         self.experimenter = merged.get("experimenter") or ""
         self.plate_number = merged.get("plate_number") or ""
 
-        # date
         date_str = merged.get("date")
         if isinstance(date_str, str) and date_str:
             try:
@@ -579,7 +557,6 @@ class ExperimentIngest(TimeStampedModel):
         else:
             self.date = None
 
-        # layout meta
         layout_meta: dict[str, Any] = merged.get("layout_meta") or {}
         self.layout_input = layout_meta
 
@@ -619,7 +596,7 @@ class ExperimentIngest(TimeStampedModel):
         """
 
         with transaction.atomic():
-            # First save: ensures uploaded files are on disk so .path works
+            # Ensure uploaded files are on disk so .path works
             super().save(*args, **kwargs)
 
             # Only parse when explicitly requested
@@ -627,17 +604,14 @@ class ExperimentIngest(TimeStampedModel):
                 return
 
             try:
-                # This will fill code/sex/div/... and layout_groups, etc.
+                # Fill code/sex/div/... and layout_groups, etc.
                 self.populate_from_files()
                 self.status = self.Status.PARSED
                 self.error_message = ""
             except Exception as e:
-                # Do NOT raise ValidationError here – that would crash the admin.
-                # Instead, mark this ingest as ERROR and store the message.
                 self.status = self.Status.ERROR
                 self.error_message = str(e)
 
-            # Persist parsed fields (or error status)
             super().save(
                 update_fields=[
                     "status",

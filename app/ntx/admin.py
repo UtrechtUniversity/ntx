@@ -12,9 +12,7 @@ from django.forms import Textarea
 from django import forms
 from django.core.exceptions import ValidationError
 from django.db import transaction
-import tempfile
 from ntx.metadata_utils.extract_metadata import collect_experiment_metadata_from_files
-
 
 from .metrics_metadata import METRIC_SECTIONS
 from .metrics_schema import MetricsPayload
@@ -238,9 +236,6 @@ class ExperimentAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     list_select_related = ("project",)
 
 
-
-# --- Ingest groups inline ---
-
 class ExperimentIngestGroupInline(admin.TabularInline):
     model = ExperimentIngestGroup
     extra = 0
@@ -261,10 +256,10 @@ class ExperimentIngestAdminForm(forms.ModelForm):
         On ADD:
         - Parse the uploaded files using temp copies that preserve original filenames.
         - Extract the experiment code.
-        - If no code: show a friendly error.
-        - If duplicate in ExperimentIngest or Experiment: show a friendly error.
+        - If no code: show an error.
+        - If duplicate in ExperimentIngest or Experiment: show an error.
         On CHANGE:
-        - Skip parsing (we don't auto-re-parse on edit).
+        - Skip parsing.
         """
         cleaned_data = super().clean()
 
@@ -278,9 +273,6 @@ class ExperimentIngestAdminForm(forms.ModelForm):
 
         if not (layout_file and baseline_csv and exposure_csv):
             return cleaned_data
-
-        import os
-        import tempfile
 
         tmp_dir = tempfile.mkdtemp()
 
@@ -301,7 +293,6 @@ class ExperimentIngestAdminForm(forms.ModelForm):
             exposure_file=exposure_path,
         )
 
-        # --- extract code robustly (same as populate_from_files) ---
         code = _first_present(
             merged,
             "experiment_id",
@@ -321,7 +312,6 @@ class ExperimentIngestAdminForm(forms.ModelForm):
                 {"layout_file": "Could not extract experiment_id (code) from the uploaded files."}
             )
 
-        from .models import Experiment, ExperimentIngest  # local import is fine
 
         ingest_exists = ExperimentIngest.objects.filter(code=code).exists()
         experiment_exists = Experiment.objects.filter(code=code).exists()
@@ -336,11 +326,7 @@ class ExperimentIngestAdminForm(forms.ModelForm):
                 }
             )
 
-        # ---------
-        # NEW BIT: pre-fill simple metadata for PENDING rows
-        # ---------
-
-        # sex
+       
         sex_token = (merged.get("sex") or "").lower()
         if "female" in sex_token:
             sex = Sex.FEMALE
@@ -349,7 +335,6 @@ class ExperimentIngestAdminForm(forms.ModelForm):
         else:
             sex = Sex.UNKNOWN
 
-        # div
         div = None
         div_token = merged.get("div")
         if isinstance(div_token, str):
@@ -365,7 +350,6 @@ class ExperimentIngestAdminForm(forms.ModelForm):
         experimenter = merged.get("experimenter") or ""
         plate_number = merged.get("plate_number") or ""
 
-        # date
         date = None
         date_str = merged.get("date")
         if isinstance(date_str, str) and date_str:
@@ -374,7 +358,6 @@ class ExperimentIngestAdminForm(forms.ModelForm):
             except Exception:
                 date = None
 
-        # Push into cleaned_data so the model save sees it
         cleaned_data.update(
             {
                 "code": code,
@@ -388,7 +371,6 @@ class ExperimentIngestAdminForm(forms.ModelForm):
             }
         )
 
-        # And into the instance (for consistency / later logic)
         self.instance.code = code
         self.instance.sex = sex
         self.instance.div = div
@@ -414,10 +396,7 @@ class ExperimentIngestAdminForm(forms.ModelForm):
                 return self.instance.code
             return code
 
-        # New object: code has already been set in clean(), but None is ok here
         return code
-
-
 
 @admin.register(ExperimentIngest)
 class ExperimentIngestAdmin(admin.ModelAdmin):
