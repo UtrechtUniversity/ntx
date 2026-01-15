@@ -196,8 +196,11 @@ def _parse_sex_prefix(condition_name: str) -> tuple[str | None, str]:
 
 
 def _format_decimal(value: Decimal) -> str:
-    value_str = format(value.normalize(), "f").rstrip("0").rstrip(".") or "0"
-    return value_str
+    """Format decimal values for labels: strip fractional zeros but keep full integers."""
+    value_str = format(value.normalize(), "f")
+    if "." in value_str:
+        value_str = value_str.rstrip("0").rstrip(".")
+    return value_str or "0"
 
 
 def _build_condition_rows(
