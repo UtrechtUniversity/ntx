@@ -597,7 +597,9 @@ def _assert_qc_metrics_available(
             missing_metric_rows.append(param_name)
             continue
 
-        missing_wells = {well for well in wells if well not in excluded and values.get(well) is None}
+        missing_wells = {
+            well for well in wells if well not in excluded and values.get(well) is None
+        }
         if missing_wells:
             if not allow_missing_qc_metrics:
                 raise IngestionError(

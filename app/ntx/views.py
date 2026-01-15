@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 from django.db.models import Count, Prefetch
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, render
+from django.views.decorators.http import require_GET
 
+from .analysis.pipeline import AnalysisPipelineError
 from .models import Condition, Experiment, Project
+from .reports.service import DEFAULT_ACTIVITY_COMPARISON_PARAMS, build_project_report_payload
 
 
 def projects_overview(request):
@@ -19,6 +23,35 @@ def project_detail(request, slug: str):
         "ntx/project_detail.html",
         {"project": project, "experiments": experiments},
     )
+
+
+def project_report(request, slug: str):
+    project = get_object_or_404(Project, slug=slug)
+    return render(request, "ntx/project_report.html", {"project": project})
+
+
+@require_GET
+def project_report_api(request, slug: str):
+    project = get_object_or_404(Project, slug=slug)
+
+    raw_params = request.GET.getlist("params")
+    params: list[str] = []
+    if len(raw_params) == 1:
+        params = [item.strip() for item in raw_params[0].split(",") if item.strip()]
+    elif raw_params:
+        params = [item.strip() for item in raw_params if item.strip()]
+    if not params:
+        params = list(DEFAULT_ACTIVITY_COMPARISON_PARAMS)
+
+    try:
+        payload = build_project_report_payload(
+            project,
+            params=params,
+        )
+    except AnalysisPipelineError as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+
+    return JsonResponse(payload)
 
 
 def experiments_list(request):

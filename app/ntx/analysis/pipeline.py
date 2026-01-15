@@ -55,7 +55,6 @@ class _ConditionRow:
 def run_experiment_analysis(
     experiment_ids: Iterable[int],
     *,
-    ignore_exclusions: bool = False,
     outlier_method: OutlierMethod | None = None,
 ) -> AnalysisPipelineResult:
     """
@@ -136,7 +135,7 @@ def run_experiment_analysis(
 
     df = _load_frames(frames)
     df = _join_metadata(df, metas=metas, condition_rows=condition_rows)
-    df = _apply_masks(df, ignore_exclusions=ignore_exclusions)
+    df = _apply_masks(df)
     df = _normalize_controls(df, method=resolved_outlier_method)
     df, fences, outliers = _remove_outliers(df, method=resolved_outlier_method)
     aggregates = _aggregate(df)
@@ -498,7 +497,7 @@ def _join_metadata(
     return df
 
 
-def _apply_masks(df: pl.DataFrame, *, ignore_exclusions: bool) -> pl.DataFrame:
+def _apply_masks(df: pl.DataFrame) -> pl.DataFrame:
     is_knockout = (pl.col("ratio") == -1).fill_null(False)
     ratio_value = pl.when(pl.col("ratio") == -1).then(None).otherwise(pl.col("ratio"))
 
@@ -512,7 +511,7 @@ def _apply_masks(df: pl.DataFrame, *, ignore_exclusions: bool) -> pl.DataFrame:
     df = df.with_columns(
         is_knockout=is_knockout,
         is_inactive=(inactive_by_active_electrodes | inactive_by_network_bursts),
-        is_excluded=pl.lit(False) if ignore_exclusions else pl.col("is_excluded"),
+        is_excluded=pl.col("is_excluded"),
         value_ratio=ratio_value,
     )
 

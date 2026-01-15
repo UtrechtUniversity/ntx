@@ -313,9 +313,7 @@ def scan_folder(path: str | Path) -> ScanResult:
     experiments: list[ExperimentFolder] = []
     errors: list[DiscoveryError] = []
 
-    candidate_dirs = sorted(
-        {p.parent for p in root.rglob("*") if p.is_file() and _is_layout(p)}
-    )
+    candidate_dirs = sorted({p.parent for p in root.rglob("*") if p.is_file() and _is_layout(p)})
 
     for candidate in candidate_dirs:
         try:
