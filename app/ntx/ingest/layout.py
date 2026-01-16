@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
+import logging
+import re
 from decimal import Decimal
 from pathlib import Path
 from typing import Iterable
@@ -11,6 +13,8 @@ from typing import Iterable
 from openpyxl import load_workbook
 
 from .wells import parse_well_string
+
+logger = logging.getLogger(__name__)
 
 # Standard plate dimensions keyed by total wells (rows, columns).
 PLATE_DIMENSIONS: dict[int, tuple[int, int]] = {
@@ -66,7 +70,7 @@ def parse_layout_xlsx(path: str | Path) -> ExperimentLayout:
 
         lowered = key.lower()
         if lowered == "date":
-            experiment_date = _parse_date(value)
+            experiment_date = _parse_date(value, source_path=path)
         elif lowered == "wells":
             plate_wells = _parse_plate_wells(value)
         elif lowered == "groups":
@@ -113,7 +117,7 @@ def parse_layout_xlsx(path: str | Path) -> ExperimentLayout:
     )
 
 
-def _parse_date(value) -> date:
+def _parse_date(value, *, source_path: Path | None = None) -> date:
     if value is None:
         raise LayoutError("Date cell is empty")
 
@@ -127,6 +131,25 @@ def _parse_date(value) -> date:
         return (base + timedelta(days=float(value))).date()
 
     text = str(value).strip()
+    parsed = _try_parse_date_text(text)
+    if parsed is not None:
+        return parsed
+
+    if source_path is not None:
+        fallback = _parse_date_from_filename(source_path)
+        if fallback is not None:
+            logger.warning(
+                "Unrecognized layout date '%s' in %s; using date from filename %s",
+                text,
+                source_path,
+                fallback.isoformat(),
+            )
+            return fallback
+
+    raise LayoutError(f"Unrecognized date format '{value}'")
+
+
+def _try_parse_date_text(text: str) -> date | None:
     for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%d/%m/%Y", "%d-%m-%Y", "%d.%m.%Y"):
         try:
             return datetime.strptime(text, fmt).date()
@@ -134,8 +157,32 @@ def _parse_date(value) -> date:
             continue
     try:
         return datetime.fromisoformat(text).date()
-    except ValueError as exc:
-        raise LayoutError(f"Unrecognized date format '{value}'") from exc
+    except ValueError:
+        return None
+
+
+def _parse_date_from_filename(path: Path) -> date | None:
+    stem = path.stem
+    for token in re.split(r"[\s_]+", stem):
+        if not token:
+            continue
+        if token.isdigit():
+            if len(token) == 8:
+                try:
+                    return datetime.strptime(token, "%Y%m%d").date()
+                except ValueError:
+                    continue
+            if len(token) == 6:
+                try:
+                    return datetime.strptime(token, "%y%m%d").date()
+                except ValueError:
+                    continue
+
+        parsed = _try_parse_date_text(token)
+        if parsed is not None:
+            return parsed
+
+    return None
 
 
 def _parse_plate_wells(value) -> int:
