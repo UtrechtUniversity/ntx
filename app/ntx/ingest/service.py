@@ -40,6 +40,10 @@ class IngestionError(Exception):
     """Raised when ingestion cannot continue."""
 
 
+class WellMismatchError(IngestionError):
+    """Raised when Axion wells do not align with layout or each other."""
+
+
 @dataclass
 class MetricsBundle:
     payload: dict
@@ -544,7 +548,7 @@ def _assert_well_alignment(
 
     baseline_name = Path(baseline_path).name
     exposure_name = Path(exposure_path).name
-    raise IngestionError(
+    raise WellMismatchError(
         "Well mismatch detected; refusing to ingest because it would silently corrupt metrics. "
         f"layout_wells={len(layout_wells)} baseline_wells={len(baseline_wells)} "
         f"exposure_wells={len(exposure_wells)}. "
