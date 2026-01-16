@@ -48,3 +48,24 @@ def test_scan_folder_no_layout_returns_error(tmp_path: Path):
     assert len(result.errors) == 1
     assert result.errors[0].folder == tmp_path
     assert "No layout files found" in str(result.errors[0])
+
+
+def test_scan_folder_nested_experiment(tmp_path: Path, data_dir: Path):
+    nested = tmp_path / "level1" / "level2"
+    nested.mkdir(parents=True, exist_ok=True)
+
+    filenames = [
+        "201210_LvM_256135_1294-67_LO.xlsx",
+        "201210_LvM_256135_1294-67_MEA_rCortex_Lindane_baseline_female_DIV10(000)_"
+        "Spike Detector (7 x STD)(000)_neuralMetrics.csv",
+        "201210_LvM_256135_1294-67_MEA_rCortex_Lindane_exposure_female_DIV10(000)_"
+        "Spike Detector (7 x STD)(000)_neuralMetrics.csv",
+    ]
+    for filename in filenames:
+        (nested / filename).touch()
+
+    result = scan_folder(tmp_path)
+    assert isinstance(result, ScanResult)
+    assert len(result.experiments) == 1
+    assert result.errors == []
+    assert result.experiments[0].path == nested

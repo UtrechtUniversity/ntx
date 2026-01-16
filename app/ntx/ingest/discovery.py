@@ -302,7 +302,7 @@ class ScanResult:
 
 def scan_folder(path: str | Path) -> ScanResult:
     """
-    Scan a folder (and immediate subfolders) for experiment file sets.
+    Scan a folder (and subfolders) for experiment file sets.
     """
     root = Path(path)
     if not root.exists():
@@ -313,8 +313,9 @@ def scan_folder(path: str | Path) -> ScanResult:
     experiments: list[ExperimentFolder] = []
     errors: list[DiscoveryError] = []
 
-    candidate_dirs = [root] if _has_layout(root) else []
-    candidate_dirs.extend([p for p in root.iterdir() if p.is_dir() and _has_layout(p)])
+    candidate_dirs = sorted(
+        {p.parent for p in root.rglob("*") if p.is_file() and _is_layout(p)}
+    )
 
     for candidate in candidate_dirs:
         try:
