@@ -9,7 +9,7 @@ from django.core.management.base import BaseCommand, CommandError
 
 from ntx.ingest.discovery import parse_filename_metadata, scan_folder
 from ntx.ingest.layout import parse_layout_xlsx
-from ntx.ingest.service import IngestionError, WellMismatchError, create_experiment_from_files
+from ntx.ingest.service import IngestionError, create_experiment_from_files
 from ntx.models import Chemical, Project
 
 
@@ -98,11 +98,6 @@ class Command(BaseCommand):
                     default_unit_symbol=unit_symbol,
                     overwrite=overwrite,
                 )
-            except WellMismatchError as exc:
-                self.stdout.write(
-                    self.style.WARNING(f"Skipping {experiment_folder.path}: {exc}")
-                )
-                continue
             except IngestionError as exc:
                 raise CommandError(str(exc)) from exc
             except Exception as exc:  # pragma: no cover - defensive logging
