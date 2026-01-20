@@ -416,12 +416,23 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
         ("Status", {"fields": ("status", "submission_method", "created_at", "updated_at")}),
         ("Uploads", {"fields": ("layout_file", "baseline_csv", "exposure_csv")}),
         ("Parsed metadata (editable)", {
-            "fields": ("code", "sex", "div", "chemical", "cell_line", "experimenter", "date", "plate_number"),
+            "fields": (
+                "project",
+                "code",
+                "sex",
+                "div",
+                "chemical",
+                "cell_line",
+                "experimenter",
+                "date",
+                "plate_number",
+            ),
         }),
         ("Layout summary (editable)", {"fields": ("layout_date", "layout_wells", "control_group")}),
     )
 
     def get_fieldsets(self, request, obj=None):
+        # obj is None → add view; obj is not None → change view
         return self.add_fieldsets if obj is None else self.change_fieldsets
 
     def get_inlines(self, request, obj=None):
