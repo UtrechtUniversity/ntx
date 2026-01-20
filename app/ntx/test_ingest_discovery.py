@@ -34,12 +34,16 @@ def test_discover_experiment_files(data_dir: Path):
     assert folder.metadata.code == "201210_LvM_256135_1294-67"
 
 
-def test_scan_folder_single_experiment(data_dir: Path):
+def test_scan_folder_multiple_experiments(data_dir: Path):
     result = scan_folder(data_dir)
     assert isinstance(result, ScanResult)
-    assert len(result.experiments) == 1
+    expected_dirs = {
+        path.parent
+        for path in data_dir.rglob("*")
+        if path.is_file() and path.name.lower().endswith(("_lo.xlsx", "_lo.xls"))
+    }
+    assert {experiment.path for experiment in result.experiments} == expected_dirs
     assert result.errors == []
-    assert result.experiments[0].path == data_dir
 
 
 def test_scan_folder_no_layout_returns_error(tmp_path: Path):
