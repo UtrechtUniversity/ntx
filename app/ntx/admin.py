@@ -402,8 +402,8 @@ class ExperimentIngestAdminForm(forms.ModelForm):
 class ExperimentIngestAdmin(admin.ModelAdmin):
     form = ExperimentIngestAdminForm
     exclude = ("layout_groups",)
-    list_display = ("id", "status", "submission_method", "code", "div", "chemical", "sex", "created_at")
-    list_filter = ("status", "submission_method", "sex")
+    list_display = ("id", "status", "submission_method", "code", "project", "div", "chemical", "sex", "created_at")
+    list_filter = ("project", "status", "submission_method", "sex")
     search_fields = ("code", "chemical", "cell_line", "experimenter")
     readonly_fields = ("error_message", "created_at", "updated_at")
 

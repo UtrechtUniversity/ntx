@@ -466,11 +466,11 @@ class ExperimentIngest(TimeStampedModel):
         DISCOVERED = "DISCOVERED", "Discovered"
 
     project = models.ForeignKey(
-    Project,
-    on_delete=models.PROTECT,
-    related_name="experiment_ingests",
-    null=True,
-    blank=True,
+        Project,
+        on_delete=models.PROTECT,
+        related_name="experiment_ingests",
+        null=True,
+        blank=True,
     )
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING, db_index=True)
     submission_method = models.CharField(max_length=16, choices=SubmissionMethod.choices, default=SubmissionMethod.UPLOAD)
