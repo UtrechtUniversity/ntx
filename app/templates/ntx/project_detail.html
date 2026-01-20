@@ -1,0 +1,53 @@
+{% extends "ntx/base.html" %}
+
+{% block title %}{{ project.name }} | Projects | Neurotoxicology{% endblock %}
+
+{% block content %}
+  <div class="flex flex-col gap-2 mb-6">
+    <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+      <div>
+        <h2 class="text-2xl font-semibold tracking-tight text-slate-900">{{ project.name }}</h2>
+        <p class="text-sm text-slate-600">
+          {{ project.start_date|date:"Y-m-d"|default:"—" }} – {{ project.end_date|date:"Y-m-d"|default:"—" }}
+        </p>
+      </div>
+      <a href="{% url 'ntx:projects' %}" class="text-sm font-medium text-slate-700 hover:underline">
+        Back to Projects
+      </a>
+    </div>
+  </div>
+
+  <h3 class="text-lg font-semibold text-slate-900 mb-3">Experiments</h3>
+
+  {% if experiments %}
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-sm">
+        <thead class="text-left text-slate-600">
+          <tr>
+            <th class="py-2 pr-4 font-medium">Code</th>
+            <th class="py-2 pr-4 font-medium">Date</th>
+            <th class="py-2 font-medium">Status</th>
+          </tr>
+        </thead>
+        <tbody class="align-top">
+          {% for experiment in experiments %}
+            <tr class="border-t border-slate-200/70 hover:bg-slate-50/60">
+              <td class="py-3 pr-4">
+                <a
+                  href="{% url 'ntx:experiment_detail' pk=experiment.pk %}"
+                  class="font-medium text-slate-900 hover:underline"
+                >
+                  {{ experiment.code }}
+                </a>
+              </td>
+              <td class="py-3 pr-4 text-slate-600">{{ experiment.date|date:"Y-m-d"|default:"—" }}</td>
+              <td class="py-3 text-slate-700">{{ experiment.get_status_display }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="text-slate-600">No experiments for this project yet.</p>
+  {% endif %}
+{% endblock %}

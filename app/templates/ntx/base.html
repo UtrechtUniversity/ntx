@@ -4,13 +4,36 @@
   <head>
     <meta charset="utf-8">
     <title>{% block title %}Neurotoxicology{% endblock %}</title>
+    <link rel="icon" href="{% static 'favicon.svg' %}" type="image/svg+xml">
     <link rel="stylesheet" href="{% static 'css/tailwind.css' %}">
   </head>
   <body class="bg-slate-50 text-slate-900 antialiased">
     <div class="max-w-6xl w-full mx-auto min-h-screen flex flex-col gap-6 px-6 py-8">
       <header class="bg-white/80 backdrop-blur border border-slate-200 shadow-sm rounded-2xl">
-        <div class="px-6 py-5 text-center">
-          <h1 class="text-2xl md:text-3xl font-semibold tracking-tight text-slate-900">Neurotoxicology</h1>
+        <div class="px-6 py-5 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <a
+            href="{% url 'ntx:home' %}"
+            class="text-2xl md:text-3xl font-semibold tracking-tight text-slate-900 hover:text-slate-700"
+          >
+            Neurotoxicology
+          </a>
+
+          <nav class="flex items-center gap-2">
+            {% with url_name=request.resolver_match.url_name %}
+              <a
+                href="{% url 'ntx:projects' %}"
+                class="px-3 py-2 rounded-xl text-sm font-medium transition {% if url_name == 'home' or url_name == 'projects' or url_name == 'project_detail' %}bg-slate-900 text-white{% else %}text-slate-700 hover:bg-slate-100{% endif %}"
+              >
+                Projects
+              </a>
+              <a
+                href="{% url 'ntx:experiments' %}"
+                class="px-3 py-2 rounded-xl text-sm font-medium transition {% if url_name == 'experiments' or url_name == 'experiment_detail' %}bg-slate-900 text-white{% else %}text-slate-700 hover:bg-slate-100{% endif %}"
+              >
+                Experiments
+              </a>
+            {% endwith %}
+          </nav>
         </div>
       </header>
 

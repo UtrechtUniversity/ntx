@@ -2,8 +2,8 @@
   "name": "ntx-frontend",
   "version": "0.0.1",
   "scripts": {
-    "dev": "npx @tailwindcss/cli -i ./src/input.css -o ../static/css/tailwind.css --watch",
-    "build": "npx @tailwindcss/cli -i ./src/input.css -o ../static/css/tailwind.css --minify"
+    "dev": "npx @tailwindcss/cli --cwd .. -i ./frontend/src/input.css -o ./static/css/tailwind.css --watch",
+    "build": "npx @tailwindcss/cli --cwd .. -i ./frontend/src/input.css -o ./static/css/tailwind.css --minify"
   },
   "devDependencies": {
     "@tailwindcss/cli": "^4.1.17",

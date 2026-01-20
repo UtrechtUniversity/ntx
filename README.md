@@ -51,25 +51,22 @@ python manage.py import_axion_folder ../data --control-chemical Water
 # Use uv instead of plain pip
 uv pip compile requirements/base.in --universal --output-file requirements/base.txt
 uv pip compile requirements/dev.in --universal --output-file requirements/dev.txt
-```
 
 # Use Ruff linter
-`ruff check`
+ruff check
 
 # Use Ruff formatter
-`ruff format`
+ruff format
 
 # Use Pyright type checking
-`pyright`
+pyright
 
 # Run the tests from the app dir
-```sh
+# for pytest to discover the configuration
 cd app
 pytest
-```
 
 # Run Django management commands with activated venv:
-```sh
 cd app
 python manage.py <command>
 ```

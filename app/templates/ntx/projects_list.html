@@ -1,0 +1,43 @@
+{% extends "ntx/base.html" %}
+
+{% block title %}Projects | Neurotoxicology{% endblock %}
+
+{% block content %}
+  <div class="flex items-center justify-between gap-4 mb-6">
+    <h2 class="text-2xl font-semibold tracking-tight text-slate-900">Projects</h2>
+  </div>
+
+  {% if projects %}
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-sm">
+        <thead class="text-left text-slate-600">
+          <tr>
+            <th class="py-2 pr-4 font-medium">Name</th>
+            <th class="py-2 pr-4 font-medium">Start date</th>
+            <th class="py-2 pr-4 font-medium">End date</th>
+            <th class="py-2 text-right font-medium">Experiments</th>
+          </tr>
+        </thead>
+        <tbody class="align-top">
+          {% for project in projects %}
+            <tr class="border-t border-slate-200/70 hover:bg-slate-50/60">
+              <td class="py-3 pr-4">
+                <a
+                  href="{% url 'ntx:project_detail' slug=project.slug %}"
+                  class="font-medium text-slate-900 hover:underline"
+                >
+                  {{ project.name }}
+                </a>
+              </td>
+              <td class="py-3 pr-4 text-slate-600">{{ project.start_date|date:"Y-m-d"|default:"—" }}</td>
+              <td class="py-3 pr-4 text-slate-600">{{ project.end_date|date:"Y-m-d"|default:"—" }}</td>
+              <td class="py-3 text-right text-slate-700 tabular-nums">{{ project.experiments_count }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="text-slate-600">No projects yet.</p>
+  {% endif %}
+{% endblock %}
