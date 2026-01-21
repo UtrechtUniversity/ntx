@@ -1,41 +1,38 @@
 from __future__ import annotations
 
+import os
+import tempfile
 from collections.abc import Sequence
+from datetime import datetime
 from typing import Any, cast
 
+from django import forms
 from django.contrib import admin
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import Count
+from django.forms import Textarea
 from django.template.loader import render_to_string
 from django.utils.safestring import SafeString, mark_safe
-from django.forms import Textarea
-from django import forms
-from django.core.exceptions import ValidationError
-from django.db import transaction
+
 from ntx.metadata_utils.extract_metadata import collect_experiment_metadata_from_files
 
 from .metrics_metadata import METRIC_SECTIONS
 from .metrics_schema import MetricsPayload
 from .models import (
+    DIV_NUM_RE,
     Chemical,
     ConcentrationUnit,
     Condition,
     Experiment,
     ExperimentFile,
-    NeuronalMetricsFrame,
-    Project,
     ExperimentIngest,
     ExperimentIngestGroup,
+    NeuronalMetricsFrame,
+    Project,
+    Sex,
+    _first_present,
 )
-
-import os
-import tempfile
-
-from .models import ExperimentIngest, ExperimentIngestGroup
-from .models import Sex, _first_present, DIV_NUM_RE
-
-from ntx.metadata_utils.extract_metadata import collect_experiment_metadata_from_files
-
 
 Numeric = float | int | None
 
@@ -219,6 +216,7 @@ class ConcentrationUnitAdmin(admin.ModelAdmin):
     def conditions_count(self, obj):
         return getattr(obj, "_conditions_count", 0)
 
+
 @admin.register(Experiment)
 class ExperimentAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     list_display = (
@@ -242,14 +240,37 @@ class ExperimentIngestGroupInline(admin.TabularInline):
     fields = ("name", "compound", "dosage", "unit", "wells")
     ordering = ("name",)
     formfield_overrides = {
-        models.TextField: {"widget": Textarea(attrs={"rows": 2, "cols": 40, "style": "resize: horizontal;"})}
+        models.TextField: {
+            "widget": Textarea(attrs={"rows": 2, "cols": 40, "style": "resize: horizontal;"})
+        }
     }
 
 
 class ExperimentIngestAdminForm(forms.ModelForm):
     class Meta:
         model = ExperimentIngest
-        fields = "__all__"
+        fields = [
+            "project",
+            "status",
+            "submission_method",
+            "layout_file",
+            "baseline_csv",
+            "exposure_csv",
+            "code",
+            "sex",
+            "div",
+            "chemical",
+            "cell_line",
+            "experimenter",
+            "date",
+            "plate_number",
+            "layout_date",
+            "layout_wells",
+            "control_group",
+            "layout_groups",
+            "layout_input",
+            "parsed_meta",
+        ]
 
     def clean(self):
         """
@@ -261,7 +282,7 @@ class ExperimentIngestAdminForm(forms.ModelForm):
         On CHANGE:
         - Skip parsing.
         """
-        cleaned_data = super().clean()
+        cleaned_data = super().clean() or {}
 
         # Only run this extra validation on ADD
         if self.instance.pk:
@@ -303,15 +324,18 @@ class ExperimentIngestAdminForm(forms.ModelForm):
             "ExperimentID",
         )
         if not code:
-            code = _first_present(merged.get("baseline_filename_meta") or {}, "experiment_id", "code")
+            code = _first_present(
+                merged.get("baseline_filename_meta") or {}, "experiment_id", "code"
+            )
         if not code:
-            code = _first_present(merged.get("exposure_filename_meta") or {}, "experiment_id", "code")
+            code = _first_present(
+                merged.get("exposure_filename_meta") or {}, "experiment_id", "code"
+            )
 
         if not code:
             raise ValidationError(
                 {"layout_file": "Could not extract experiment_id (code) from the uploaded files."}
             )
-
 
         ingest_exists = ExperimentIngest.objects.filter(code=code).exists()
         experiment_exists = Experiment.objects.filter(code=code).exists()
@@ -326,7 +350,6 @@ class ExperimentIngestAdminForm(forms.ModelForm):
                 }
             )
 
-       
         sex_token = (merged.get("sex") or "").lower()
         if "female" in sex_token:
             sex = Sex.FEMALE
@@ -354,7 +377,7 @@ class ExperimentIngestAdminForm(forms.ModelForm):
         date_str = merged.get("date")
         if isinstance(date_str, str) and date_str:
             try:
-                date = timezone.datetime.fromisoformat(date_str).date()
+                date = datetime.fromisoformat(date_str).date()
             except Exception:
                 date = None
 
@@ -382,7 +405,6 @@ class ExperimentIngestAdminForm(forms.ModelForm):
 
         return cleaned_data
 
-
     def clean_code(self):
         """
         Prevent accidentally clearing `code` on existing records.
@@ -398,45 +420,61 @@ class ExperimentIngestAdminForm(forms.ModelForm):
 
         return code
 
+
 @admin.register(ExperimentIngest)
 class ExperimentIngestAdmin(admin.ModelAdmin):
     form = ExperimentIngestAdminForm
     exclude = ("layout_groups",)
-    list_display = ("id", "status", "submission_method", "code", "project", "div", "chemical", "sex", "created_at")
+    list_display = (
+        "id",
+        "status",
+        "submission_method",
+        "code",
+        "project",
+        "div",
+        "chemical",
+        "sex",
+        "created_at",
+    )
     list_filter = ("project", "status", "submission_method", "sex")
     search_fields = ("code", "chemical", "cell_line", "experimenter")
     readonly_fields = ("error_message", "created_at", "updated_at")
 
-    add_fieldsets = (
-        ("Uploads", {"fields": ("layout_file", "baseline_csv", "exposure_csv")}),
-    )
+    add_fieldsets = (("Uploads", {"fields": ("layout_file", "baseline_csv", "exposure_csv")}),)
 
     change_fieldsets = (
         ("Logs", {"fields": ("error_message",)}),
         ("Status", {"fields": ("status", "submission_method", "created_at", "updated_at")}),
         ("Uploads", {"fields": ("layout_file", "baseline_csv", "exposure_csv")}),
-        ("Parsed metadata (editable)", {
-            "fields": (
-                "project",
-                "code",
-                "sex",
-                "div",
-                "chemical",
-                "cell_line",
-                "experimenter",
-                "date",
-                "plate_number",
-            ),
-        }),
+        (
+            "Parsed metadata (editable)",
+            {
+                "fields": (
+                    "project",
+                    "code",
+                    "sex",
+                    "div",
+                    "chemical",
+                    "cell_line",
+                    "experimenter",
+                    "date",
+                    "plate_number",
+                ),
+            },
+        ),
         ("Layout summary (editable)", {"fields": ("layout_date", "layout_wells", "control_group")}),
     )
 
-    def get_fieldsets(self, request, obj=None):
+    def get_fieldsets(self, request, obj=None):  # type: ignore[override]
         # obj is None → add view; obj is not None → change view
         return self.add_fieldsets if obj is None else self.change_fieldsets
 
+
     def get_inlines(self, request, obj=None):
-        return [] if obj is None else [ExperimentIngestGroupInline]
+        if obj is None:
+            return ()
+        return (ExperimentIngestGroupInline,)
+
 
     def save_model(self, request, obj, form, change):
         """
@@ -479,7 +517,7 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
         if not isinstance(groups, list):
             return
 
-        obj.ingest_groups.all().delete()
+        obj.ingest_groups.all().delete() # type: ignore[attr-defined]
         for g in groups:
             if not isinstance(g, dict):
                 continue
@@ -599,5 +637,3 @@ class NeuronalMetricsFrameAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     @admin.display(description="QC baseline")
     def qc_table(self, obj: NeuronalMetricsFrame) -> SafeString:
         return _render_qc_json_table(obj.qc_json)
-    
-    
