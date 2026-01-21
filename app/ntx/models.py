@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from typing import TYPE_CHECKING, Any
-import os
+from datetime import datetime
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
@@ -10,14 +10,13 @@ from django.db import models, transaction
 from django.db.models import Q
 from django.utils import timezone
 from django.utils.text import slugify
-from django.core.exceptions import ValidationError
 from pydantic import ValidationError as PydanticValidationError
 from pydantic_core import ErrorDetails
 
-from .metrics_schema import MetricsPayload, MetricsQcPayload
-from .utils import sanitize_numeric_json
 from ntx.metadata_utils.extract_metadata import collect_experiment_metadata_from_files
 
+from .metrics_schema import MetricsPayload, MetricsQcPayload
+from .utils import sanitize_numeric_json
 
 User = get_user_model()
 
@@ -265,13 +264,17 @@ class Experiment(TimeStampedModel):
     well_count = models.PositiveIntegerField(default=0)
     condition_count = models.PositiveIntegerField(default=0)
     knockout_stats = models.JSONField(default=dict, blank=True)
-    status = models.CharField(max_length=16, choices=ExperimentStatus.choices, default=ExperimentStatus.CREATED)
+    status = models.CharField(
+        max_length=16, choices=ExperimentStatus.choices, default=ExperimentStatus.CREATED
+    )
 
     class Meta(TimeStampedModel.Meta):
         ordering = ["-date", "code"]
         indexes = [models.Index(fields=["project", "date"], name="experiment_project_date_idx")]
         constraints = [
-            models.UniqueConstraint(fields=["project", "code"], name="experiment_project_code_unique")
+            models.UniqueConstraint(
+                fields=["project", "code"], name="experiment_project_code_unique"
+            )
         ]
 
     def __str__(self) -> str:
@@ -407,7 +410,9 @@ class NeuronalMetricsFrame(TimeStampedModel):
         ordering = ["experiment_id", "div"]
         indexes = [models.Index(fields=["experiment", "div"], name="neur_metrics_exp_div_idx")]
         constraints = [
-            models.UniqueConstraint(fields=["experiment", "div"], name="neur_metrics_frame_exp_div_unique")
+            models.UniqueConstraint(
+                fields=["experiment", "div"], name="neur_metrics_frame_exp_div_unique"
+            )
         ]
 
     def __str__(self) -> str:
@@ -472,8 +477,12 @@ class ExperimentIngest(TimeStampedModel):
         null=True,
         blank=True,
     )
-    status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING, db_index=True)
-    submission_method = models.CharField(max_length=16, choices=SubmissionMethod.choices, default=SubmissionMethod.UPLOAD)
+    status = models.CharField(
+        max_length=16, choices=Status.choices, default=Status.PENDING, db_index=True
+    )
+    submission_method = models.CharField(
+        max_length=16, choices=SubmissionMethod.choices, default=SubmissionMethod.UPLOAD
+    )
     error_message = models.TextField(blank=True, default="")
 
     layout_file = models.FileField(upload_to="ingest/layouts/", max_length=500)
@@ -503,6 +512,54 @@ class ExperimentIngest(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"ExperimentIngest #{self.pk or 'new'} ({self.status})"
+
+    def save(self, *args, **kwargs):
+        """
+        Save the ingest row.
+
+        Parsing of the uploaded files is *optional* and only happens when the
+        transient attribute `_should_parse` is set to True on the instance
+        (e.g. by the admin, depending on which button was pressed).
+        """
+
+        with transaction.atomic():
+            # Ensure uploaded files are on disk so .path works
+            super().save(*args, **kwargs)
+
+            # Only parse when explicitly requested
+            if not getattr(self, "_should_parse", False):
+                return
+
+            try:
+                # Fill code/sex/div/... and layout_groups, etc.
+                self.populate_from_files()
+                self.status = self.Status.PARSED
+                self.error_message = ""
+            except Exception as e:
+                self.status = self.Status.ERROR
+                self.error_message = str(e)
+
+            super().save(
+                update_fields=[
+                    "status",
+                    "error_message",
+                    "code",
+                    "sex",
+                    "div",
+                    "chemical",
+                    "cell_line",
+                    "experimenter",
+                    "date",
+                    "plate_number",
+                    "layout_date",
+                    "layout_wells",
+                    "control_group",
+                    "layout_groups",
+                    "layout_input",
+                    "parsed_meta",
+                    "updated_at",
+                ]
+            )
 
     def populate_from_files(self) -> None:
         """
@@ -558,7 +615,8 @@ class ExperimentIngest(TimeStampedModel):
         date_str = merged.get("date")
         if isinstance(date_str, str) and date_str:
             try:
-                self.date = timezone.datetime.fromisoformat(date_str).date()
+                self.date = datetime.fromisoformat(date_str).date()
+
             except Exception:
                 self.date = None
         else:
@@ -570,7 +628,8 @@ class ExperimentIngest(TimeStampedModel):
         layout_date_str = layout_meta.get("date")
         if isinstance(layout_date_str, str) and layout_date_str:
             try:
-                self.layout_date = timezone.datetime.fromisoformat(layout_date_str).date()
+                self.layout_date = datetime.fromisoformat(layout_date_str).date()
+
             except Exception:
                 self.layout_date = None
         else:
@@ -593,53 +652,6 @@ class ExperimentIngest(TimeStampedModel):
             "layout_meta": layout_meta,
         }
 
-    def save(self, *args, **kwargs):
-        """
-        Save the ingest row.
-
-        Parsing of the uploaded files is *optional* and only happens when the
-        transient attribute `_should_parse` is set to True on the instance
-        (e.g. by the admin, depending on which button was pressed).
-        """
-
-        with transaction.atomic():
-            # Ensure uploaded files are on disk so .path works
-            super().save(*args, **kwargs)
-
-            # Only parse when explicitly requested
-            if not getattr(self, "_should_parse", False):
-                return
-
-            try:
-                # Fill code/sex/div/... and layout_groups, etc.
-                self.populate_from_files()
-                self.status = self.Status.PARSED
-                self.error_message = ""
-            except Exception as e:
-                self.status = self.Status.ERROR
-                self.error_message = str(e)
-
-            super().save(
-                update_fields=[
-                    "status",
-                    "error_message",
-                    "code",
-                    "sex",
-                    "div",
-                    "chemical",
-                    "cell_line",
-                    "experimenter",
-                    "date",
-                    "plate_number",
-                    "layout_date",
-                    "layout_wells",
-                    "control_group",
-                    "layout_groups",
-                    "layout_input",
-                    "parsed_meta",
-                    "updated_at",
-                ]
-            )
 
 class ExperimentIngestGroup(TimeStampedModel):
     ingest = models.ForeignKey(
@@ -651,7 +663,9 @@ class ExperimentIngestGroup(TimeStampedModel):
     compound = models.CharField(max_length=255, blank=True, default="")
     dosage = models.FloatField(null=True, blank=True)
     unit = models.CharField(max_length=32, blank=True, default="")
-    wells = models.TextField(blank=True, default="", help_text="Space-separated wells, e.g. A1 A2 A3")
+    wells = models.TextField(
+        blank=True, default="", help_text="Space-separated wells, e.g. A1 A2 A3"
+    )
 
     class Meta(TimeStampedModel.Meta):
         ordering = ["name"]
@@ -660,5 +674,4 @@ class ExperimentIngestGroup(TimeStampedModel):
         ]
 
     def __str__(self) -> str:
-        return f"{self.ingest.code or self.ingest_id}: {self.name}"
-
+        return f"{self.ingest.code or self.ingest.pk}: {self.name}"
