@@ -11,6 +11,30 @@ from .ingest.layout import LayoutError, parse_layout_xlsx
 from .ingest.wells import parse_well_string
 
 
+def _write_layout(
+    path: Path,
+    *,
+    date_value: object | None = None,
+    include_date: bool = True,
+    wells: int = 48,
+    control_wells: str = "A1",
+    extra_conditions: list[tuple[str, str]] | None = None,
+) -> None:
+    wb = Workbook()
+    ws = wb.active
+    if ws is None:
+        pytest.fail("Workbook has no active worksheet")
+    if include_date:
+        ws.append(["Date", date_value])
+    ws.append(["Wells", wells])
+    ws.append(["Groups", None])
+    ws.append(["Control", control_wells])
+    if extra_conditions:
+        for key, value in extra_conditions:
+            ws.append([key, value])
+    wb.save(path)
+
+
 def test_parse_well_string_range_and_single():
     wells = parse_well_string("A1-A4 B2 C3-C4")
     assert wells == ["A1", "A2", "A3", "A4", "B2", "C3", "C4"]
@@ -55,17 +79,41 @@ def test_parse_real_layout_fixture(data_dir: Path):
 
 def test_missing_date_raises(tmp_path: Path):
     tmp_path = tmp_path / "missing_date.xlsx"
-    wb = Workbook()
-    ws = wb.active
-    if ws is None:
-        pytest.fail("Workbook has no active worksheet")
-    ws.append(["Wells", 48])
-    ws.append(["Groups", None])
-    ws.append(["Control", "A1"])
-    wb.save(tmp_path)
+    _write_layout(tmp_path, include_date=False)
 
     with pytest.raises(LayoutError):
         parse_layout_xlsx(tmp_path)
+
+
+def test_parse_layout_date_dd_mm_yyyy(tmp_path: Path):
+    tmp_path = tmp_path / "dd_mm_yyyy.xlsx"
+    _write_layout(
+        tmp_path,
+        date_value="28/09/2023",
+        extra_conditions=[("0.1", "A2")],
+    )
+
+    layout = parse_layout_xlsx(tmp_path)
+    assert layout.date == date(2023, 9, 28)
+
+
+@pytest.mark.parametrize(
+    ("filename", "expected"),
+    [
+        ("20230616_placeholder_LO.xlsx", date(2023, 6, 16)),
+        ("230616_placeholder_LO.xlsx", date(2023, 6, 16)),
+    ],
+)
+def test_parse_layout_date_placeholder_uses_filename(
+    tmp_path: Path,
+    filename: str,
+    expected: date,
+):
+    tmp_path = tmp_path / filename
+    _write_layout(tmp_path, date_value="DD/MM/2023")
+
+    layout = parse_layout_xlsx(tmp_path)
+    assert layout.date == expected
 
 
 def test_duplicate_wells_raise(tmp_path: Path):

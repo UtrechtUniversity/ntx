@@ -300,6 +300,7 @@ def _process_metrics(
         baseline_path=baseline_path,
         exposure_path=exposure_path,
     )
+    excluded_wells = experiment.excluded_wells
 
     if baseline_csv.settings.active_electrode_criterion is not None:
         experiment.active_electrode_criterion = baseline_csv.settings.active_electrode_criterion
@@ -329,6 +330,7 @@ def _process_metrics(
         wells=wells,
         baseline_path=baseline_path,
         allow_missing_qc_metrics=allow_missing_mask_metrics,
+        excluded_wells=excluded_wells,
     )
 
     params = [
@@ -521,35 +523,40 @@ def _assert_well_alignment(
             f"exposure_only={_format_wells(exposure_only)}"
         )
 
-    if layout_set != baseline_set:
-        missing = _sort_wells(layout_set - baseline_set)
-        extra = _sort_wells(baseline_set - layout_set)
+    missing_from_baseline = _sort_wells(layout_set - baseline_set)
+    extra_in_baseline = _sort_wells(baseline_set - layout_set)
+    if missing_from_baseline:
         errors.append(
-            "Layout/baseline wells differ. "
-            f"missing_from_baseline={_format_wells(missing)} "
-            f"extra_in_baseline={_format_wells(extra)}"
+            "Layout contains wells missing from baseline CSV. "
+            f"missing_from_baseline={_format_wells(missing_from_baseline)}"
+        )
+    if extra_in_baseline:
+        logger.info(
+            "Baseline CSV contains extra wells not in Layout (ignoring). "
+            f"extra_in_baseline={_format_wells(extra_in_baseline)}"
         )
 
-    if layout_set != exposure_set:
-        missing = _sort_wells(layout_set - exposure_set)
-        extra = _sort_wells(exposure_set - layout_set)
+    missing_from_exposure = _sort_wells(layout_set - exposure_set)
+    extra_in_exposure = _sort_wells(exposure_set - layout_set)
+    if missing_from_exposure:
         errors.append(
-            "Layout/exposure wells differ. "
-            f"missing_from_exposure={_format_wells(missing)} "
-            f"extra_in_exposure={_format_wells(extra)}"
+            "Layout contains wells missing from exposure CSV. "
+            f"missing_from_exposure={_format_wells(missing_from_exposure)}"
+        )
+    if extra_in_exposure:
+        logger.info(
+            "Exposure CSV contains extra wells not in Layout (ignoring). "
+            f"extra_in_exposure={_format_wells(extra_in_exposure)}"
         )
 
-    if not errors:
-        return
-
-    baseline_name = Path(baseline_path).name
-    exposure_name = Path(exposure_path).name
-    raise IngestionError(
-        "Well mismatch detected; refusing to ingest because it would silently corrupt metrics. "
-        f"layout_wells={len(layout_wells)} baseline_wells={len(baseline_wells)} "
-        f"exposure_wells={len(exposure_wells)}. "
-        f"Files: baseline={baseline_name} exposure={exposure_name}. " + " ".join(errors)
-    )
+    if errors:
+        baseline_name = Path(baseline_path).name
+        exposure_name = Path(exposure_path).name
+        raise IngestionError(
+            "Well mismatch detected. "
+            f"Files: baseline={baseline_name} exposure={exposure_name}. " + " ".join(errors)
+        )
+    return None
 
 
 def _assert_qc_metrics_available(
@@ -558,6 +565,7 @@ def _assert_qc_metrics_available(
     wells: list[str],
     baseline_path,
     allow_missing_qc_metrics: bool = False,
+    excluded_wells: Iterable[str] | None = None,
 ) -> None:
     """
     Ensure baseline QC inputs exist.
@@ -581,13 +589,15 @@ def _assert_qc_metrics_available(
     missing_metric_rows: list[str] = []
     missing_values: dict[str, set[str]] = {}
 
+    excluded = {well for well in (excluded_wells or []) if isinstance(well, str)}
+
     for param_name in required_params:
         values = baseline_map.get(param_name)
         if values is None:
             missing_metric_rows.append(param_name)
             continue
 
-        missing_wells = {well for well in wells if values.get(well) is None}
+        missing_wells = {well for well in wells if well not in excluded and values.get(well) is None}
         if missing_wells:
             if not allow_missing_qc_metrics:
                 raise IngestionError(

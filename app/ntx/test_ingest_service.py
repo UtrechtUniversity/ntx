@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 from pathlib import Path
 from typing import cast
 
@@ -31,6 +32,30 @@ def _measurement_stub(wells: list[str]) -> str:
         "Electrode Burst Metrics\n"
         "Burst Frequency (Hz)," + values + ",\n"
     )
+
+
+def _write_csv_with_well_header(
+    source: Path,
+    dest: Path,
+    *,
+    drop_well: str | None = None,
+    add_well: str | None = None,
+) -> None:
+    rows: list[list[str]] = []
+    with source.open(newline="", encoding="utf-8-sig") as handle:
+        reader = csv.reader(handle)
+        for row in reader:
+            if row and (row[0] or "").strip().lower() == "well averages":
+                wells = [cell for cell in row[1:] if (cell or "").strip()]
+                if drop_well:
+                    wells = [well for well in wells if well != drop_well]
+                if add_well and add_well not in wells:
+                    wells.append(add_well)
+                row = [row[0], *wells]
+            rows.append(row)
+    with dest.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerows(rows)
 
 
 def test_create_experiment_from_real_folder(stored_data_dir: Path):
@@ -155,33 +180,69 @@ def test_overwrite_rolls_back_on_failure(stored_data_dir: Path, media_root: Path
     assert NeuronalMetricsFrame.objects.filter(experiment_id=original_id).exists()
 
 
-def test_ingest_fails_on_well_mismatch(stored_data_dir: Path, media_root: Path):
+def test_ingest_fails_on_missing_wells(stored_data_dir: Path, media_root: Path):
     folder = discover_experiment_files(stored_data_dir)
     layout = parse_layout_xlsx(folder.layout_file)
     layout_wells = [well for condition in layout.conditions for well in condition.wells]
     assert len(layout_wells) > 0
 
-    # Drop one well from the Axion header to simulate a mismatch.
-    baseline_header_wells = layout_wells[:-1]
+    missing_well = layout_wells[-1]
 
     tmp_dir = media_root / "axion" / "tmp_mismatch"
     tmp_dir.mkdir(parents=True, exist_ok=True)
 
     baseline_path = tmp_dir / "baseline_neuralMetrics.csv"
-    baseline_path.write_text("Well Averages," + ",".join(baseline_header_wells) + ",\n")
+    exposure_path = tmp_dir / "exposure_neuralMetrics.csv"
+    _write_csv_with_well_header(folder.baseline_csv, baseline_path, drop_well=missing_well)
+    _write_csv_with_well_header(folder.exposure_csv, exposure_path, drop_well=missing_well)
 
     bad_folder = ExperimentFolder(
-        path=folder.path,
+        path=baseline_path.parent,
         layout_file=folder.layout_file,
         baseline_csv=baseline_path,
-        exposure_csv=folder.exposure_csv,
+        exposure_csv=exposure_path,
         metadata=folder.metadata,
     )
 
     before_count = Experiment.objects.count()
-    with pytest.raises(IngestionError):
+    with pytest.raises(IngestionError) as excinfo:
         create_experiment_from_files(bad_folder, overwrite=True)
+    assert missing_well in str(excinfo.value)
     assert Experiment.objects.count() == before_count
+
+
+def test_ingest_succeeds_with_extra_csv_wells(stored_data_dir: Path, media_root: Path):
+    folder = discover_experiment_files(stored_data_dir)
+    layout = parse_layout_xlsx(folder.layout_file)
+    layout_wells = [well for condition in layout.conditions for well in condition.wells]
+
+    tmp_dir = media_root / "axion" / "tmp_extra"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+
+    # To be safe, adding a new well that definitely isn't in layout.
+    extra_well = "Z99"
+    assert extra_well not in layout_wells
+
+    baseline_path = tmp_dir / "baseline_neuralMetrics.csv"
+    exposure_path = tmp_dir / "exposure_neuralMetrics.csv"
+    _write_csv_with_well_header(folder.baseline_csv, baseline_path, add_well=extra_well)
+    _write_csv_with_well_header(folder.exposure_csv, exposure_path, add_well=extra_well)
+
+    new_folder = ExperimentFolder(
+        path=baseline_path.parent,
+        layout_file=folder.layout_file,
+        baseline_csv=baseline_path,
+        exposure_csv=exposure_path,
+        metadata=folder.metadata,
+    )
+
+    # Should succeed
+    experiment = create_experiment_from_files(new_folder, overwrite=True)
+    assert experiment.status == ExperimentStatus.INGESTED
+    # Ensure well count matches LAYOUT, not CSV
+    assert experiment.well_count == len(layout_wells)
+    frame = experiment.neuronal_metrics_frames.get(div=0)
+    assert extra_well not in frame.metrics_json["wells"]
 
 
 def test_ingest_fails_when_mask_metrics_missing(stored_data_dir: Path, media_root: Path):
