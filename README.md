@@ -18,6 +18,7 @@ uv pip install -r requirements/dev.txt
 ```sh
 cd app/frontend
 npm install
+npm install plotly.js-dist-min
 # Live update tailwindcss:
 npm run dev
 ```
