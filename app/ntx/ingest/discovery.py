@@ -29,6 +29,7 @@ COMPOUNDS = {
     "oxazepam",
     "pfhxs",
     "snakevenoms",
+    "permethrin",
 }
 EXPERIMENT_TYPES = {"MEA"}
 CELL_TYPES = {"rcortex"}

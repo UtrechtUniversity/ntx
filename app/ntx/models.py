@@ -13,7 +13,7 @@ from django.utils.text import slugify
 from pydantic import ValidationError as PydanticValidationError
 from pydantic_core import ErrorDetails
 
-from ntx.metadata_utils.extract_metadata import collect_experiment_metadata_from_files
+from ntx.ingest.metadata import collect_experiment_metadata_from_files
 
 from .metrics_schema import MetricsPayload, MetricsQcPayload
 from .utils import sanitize_numeric_json

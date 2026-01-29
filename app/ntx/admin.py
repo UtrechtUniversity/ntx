@@ -15,7 +15,7 @@ from django.forms import Textarea
 from django.template.loader import render_to_string
 from django.utils.safestring import SafeString, mark_safe
 
-from ntx.metadata_utils.extract_metadata import collect_experiment_metadata_from_files
+from ntx.ingest.metadata import collect_experiment_metadata_from_files
 
 from .metrics_metadata import METRIC_SECTIONS
 from .metrics_schema import MetricsPayload
@@ -233,15 +233,44 @@ class ExperimentAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     search_fields = ("code", "researcher", "cell_line", "manufacturer")
     list_select_related = ("project",)
 
+class ExperimentIngestGroupForm(forms.ModelForm):
+    class Meta:
+        model = ExperimentIngestGroup
+        fields = "__all__"
+        widgets = {
+            "compound": forms.TextInput(
+                attrs={"size": 10, "style": "width: 10em;"}
+            ),
+            "dosage": forms.TextInput(
+                attrs={
+                    "size": 10,
+                    "style": "width: 5em;",
+                }
+            ),
+            "unit": forms.TextInput(
+                attrs={
+                    "size": 10,
+                    "style": "width: 5em;",
+                }
+            ),
+            "name": forms.TextInput(
+                attrs={
+                    "size": 10,
+                    "style": "width: 5em;",
+                }
+            ),
+        }
+
 
 class ExperimentIngestGroupInline(admin.TabularInline):
     model = ExperimentIngestGroup
+    form = ExperimentIngestGroupForm
     extra = 0
-    fields = ("name", "compound", "dosage", "unit", "wells")
+    fields = ("compound", "dosage", "unit", "wells", "name")
     ordering = ("name",)
     formfield_overrides = {
         models.TextField: {
-            "widget": Textarea(attrs={"rows": 2, "cols": 40, "style": "resize: horizontal;"})
+            "widget": Textarea(attrs={"rows": 2, "cols": 25, "style": "resize: horizontal;"})
         }
     }
 

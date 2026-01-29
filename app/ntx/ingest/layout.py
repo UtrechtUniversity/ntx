@@ -1,4 +1,4 @@
-"""Parsing of Axion layout workbooks."""
+"""Parsing of Axion layout workbooks + legacy group parsing."""
 
 from __future__ import annotations
 
@@ -16,7 +16,6 @@ from .wells import parse_well_string
 
 logger = logging.getLogger(__name__)
 
-# Standard plate dimensions keyed by total wells (rows, columns).
 PLATE_DIMENSIONS: dict[int, tuple[int, int]] = {
     48: (6, 8),
 }
@@ -28,9 +27,11 @@ class LayoutError(ValueError):
 
 @dataclass
 class ConditionLayout:
-    concentration: Decimal | None  # None for control
+    concentration: Decimal | None
     wells: list[str]
     is_control: bool
+    compound: str | None = None
+    unit: str | None = None 
 
 
 @dataclass
@@ -40,14 +41,49 @@ class ExperimentLayout:
     conditions: list[ConditionLayout]
 
 
+def parse_group_name(name: str) -> dict[str, object]:
+    name = str(name).strip()
+    parts = name.split()
+    compound, dosage, unit = None, None, None
+
+    pattern = re.compile(r"([\d\.]+)\s*([a-zA-Z/%µμ]*)")
+
+    for i, part in enumerate(parts):
+        match = pattern.fullmatch(part)
+        if match:
+            try:
+                dosage = float(match.group(1))
+            except ValueError:
+                dosage = None
+
+            unit = match.group(2)
+            if not unit and i + 1 < len(parts):
+                unit = parts[i + 1]
+
+            compound = " ".join(parts[:i]) if i > 0 else None
+            break
+
+    if dosage is None:
+        for i, part in enumerate(reversed(parts)):
+            if part.replace(".", "", 1).isdigit():
+                dosage = float(part)
+                compound = " ".join(parts[:-(i + 1)]) if (i + 1) < len(parts) else None
+                break
+
+    if compound is None and dosage is None:
+        compound = name
+
+    return {"compound": compound or None, "dosage": dosage, "unit": unit}
+
+
 def parse_layout_xlsx(path: str | Path) -> ExperimentLayout:
     """
     Parse an Axion layout workbook (``*_LO.xlsx``).
 
     Sheet layout (first worksheet):
-    - Column A contains keys (Date, Wells, Groups, then concentrations/Control).
-    - Column B contains values (date, plate size, and well strings).
-    - Conditions start after the ``Groups`` row.
+    - Column A: keys ("Date", "Wells", "Groups", then group labels).
+    - Column B: values (date, plate size, and well strings).
+    - Conditions start after the "Groups" row.
     """
     path = Path(path)
     if not path.exists():
@@ -59,45 +95,50 @@ def parse_layout_xlsx(path: str | Path) -> ExperimentLayout:
     experiment_date: date | None = None
     plate_wells: int | None = None
     conditions: list[ConditionLayout] = []
-    in_groups_section = False
+    in_groups = False
 
     for key_cell, value_cell in sheet.iter_rows(min_row=1, max_col=2, values_only=True):
         key = str(key_cell).strip() if key_cell is not None else ""
         value = value_cell
-
         if not key:
             continue
 
         lowered = key.lower()
         if lowered == "date":
-            experiment_date = _parse_date(value, source_path=path)
+            experiment_date = _parse_date(value, path)
         elif lowered == "wells":
             plate_wells = _parse_plate_wells(value)
         elif lowered == "groups":
-            in_groups_section = True
-        elif in_groups_section:
+            in_groups = True
+        elif in_groups:
             wells = parse_well_string(str(value).strip()) if value is not None else []
             if not wells:
                 raise LayoutError(f"Condition '{key}' has no wells listed")
 
-            if lowered == "control":
-                condition = ConditionLayout(
-                    concentration=None,
-                    wells=wells,
-                    is_control=True,
-                )
+            legacy = parse_group_name(key)
+            dosage = legacy["dosage"]
+            compound = legacy["compound"]
+            unit = legacy["unit"]
+
+            is_control = any(k in lowered for k in ("control", "dmso"))
+
+            if is_control or dosage is None:
+                concentration: Decimal | None = None
             else:
                 try:
-                    concentration = Decimal(str(key))
+                    concentration = Decimal(str(dosage))
                 except Exception as exc:
                     raise LayoutError(f"Invalid concentration value '{key}'") from exc
 
-                condition = ConditionLayout(
+            conditions.append(
+                ConditionLayout(
                     concentration=concentration,
                     wells=wells,
-                    is_control=False,
+                    is_control=is_control,
+                    compound=compound,
+                    unit=unit,
                 )
-            conditions.append(condition)
+            )
 
     if experiment_date is None:
         raise LayoutError("Layout is missing a Date entry")
@@ -116,8 +157,7 @@ def parse_layout_xlsx(path: str | Path) -> ExperimentLayout:
         conditions=conditions,
     )
 
-
-def _parse_date(value, *, source_path: Path | None = None) -> date:
+def _parse_date(value, path: Path) -> date:
     if value is None:
         raise LayoutError("Date cell is empty")
 
@@ -126,25 +166,17 @@ def _parse_date(value, *, source_path: Path | None = None) -> date:
     if isinstance(value, date):
         return value
     if isinstance(value, (int, float)):
-        # Excel serial date (1900 epoch)
         base = datetime(1899, 12, 30)
         return (base + timedelta(days=float(value))).date()
 
     text = str(value).strip()
     parsed = _try_parse_date_text(text)
-    if parsed is not None:
+    if parsed:
         return parsed
 
-    if source_path is not None:
-        fallback = _parse_date_from_filename(source_path)
-        if fallback is not None:
-            logger.warning(
-                "Unrecognized layout date '%s' in %s; using date from filename %s",
-                text,
-                source_path,
-                fallback.isoformat(),
-            )
-            return fallback
+    fallback = _parse_date_from_filename(path)
+    if fallback:
+        return fallback
 
     raise LayoutError(f"Unrecognized date format '{value}'")
 
@@ -177,19 +209,17 @@ def _parse_date_from_filename(path: Path) -> date | None:
                     return datetime.strptime(token, "%y%m%d").date()
                 except ValueError:
                     continue
-
         parsed = _try_parse_date_text(token)
-        if parsed is not None:
+        if parsed:
             return parsed
-
     return None
 
 
 def _parse_plate_wells(value) -> int:
     try:
         wells = int(value)
-    except (TypeError, ValueError) as exc:  # noqa: PERF203
-        raise LayoutError(f"Invalid plate well count '{value}'") from exc
+    except Exception:
+        raise LayoutError(f"Invalid plate well count '{value}'")
     if wells <= 0:
         raise LayoutError("Plate well count must be positive")
     return wells
@@ -197,41 +227,39 @@ def _parse_plate_wells(value) -> int:
 
 def _validate_wells(conditions: Iterable[ConditionLayout], plate_wells: int) -> None:
     seen: set[str] = set()
-    dimensions = PLATE_DIMENSIONS.get(plate_wells)
-    row_limit, col_limit = dimensions if dimensions else (None, None)
+    dims = PLATE_DIMENSIONS.get(plate_wells)
+    row_limit, col_limit = dims if dims else (None, None)
 
-    for condition in conditions:
-        for well in condition.wells:
+    for cond in conditions:
+        for well in cond.wells:
             if well in seen:
                 raise LayoutError(f"Duplicate well '{well}' in layout")
             seen.add(well)
 
-            row_label = well[0].upper()
+            row = well[0].upper()
             try:
-                col_number = int(well[1:])
-            except ValueError as exc:
-                raise LayoutError(f"Invalid well identifier '{well}'") from exc
+                col = int(well[1:])
+            except ValueError:
+                raise LayoutError(f"Invalid well identifier '{well}'")
 
-            if col_number <= 0:
+            if col <= 0:
                 raise LayoutError(f"Well number must be positive: '{well}'")
-            if row_limit is not None:
-                row_index = ord(row_label) - ord("A") + 1
-                if row_index > row_limit:
-                    raise LayoutError(
-                        f"Well '{well}' exceeds row limit for {plate_wells}-well plate"
-                    )
-            if col_limit is not None and col_number > col_limit:
-                raise LayoutError(
-                    f"Well '{well}' exceeds column limit for {plate_wells}-well plate"
-                )
 
-    if dimensions:
-        max_supported = dimensions[0] * dimensions[1]
+            if row_limit is not None:
+                r = ord(row) - ord("A") + 1
+                if r > row_limit:
+                    raise LayoutError(f"Well '{well}' exceeds row limit")
+
+            if col_limit is not None and col > col_limit:
+                raise LayoutError(f"Well '{well}' exceeds column limit")
+
+    if dims:
+        max_supported = dims[0] * dims[1]
         if len(seen) > max_supported:
             raise LayoutError(
-                f"Layout lists {len(seen)} wells which exceeds plate capacity {max_supported}"
+                f"Layout lists {len(seen)} wells exceeding plate capacity {max_supported}"
             )
     elif len(seen) > plate_wells:
         raise LayoutError(
-            f"Layout lists {len(seen)} wells which exceeds plate capacity {plate_wells}"
+            f"Layout lists {len(seen)} wells exceeding plate capacity {plate_wells}"
         )
