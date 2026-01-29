@@ -3,27 +3,55 @@
 {% block title %}{{ project.name }} | Projects | Neurotoxicology{% endblock %}
 
 {% block content %}
-  <div class="flex flex-col gap-2 mb-6">
-    <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-      <div>
-        <h2 class="text-2xl font-semibold tracking-tight text-slate-900">{{ project.name }}</h2>
-        <p class="text-sm text-slate-600">
-          {{ project.start_date|date:"Y-m-d"|default:"—" }} – {{ project.end_date|date:"Y-m-d"|default:"—" }}
-        </p>
-      </div>
-      <div class="flex items-center gap-3 text-sm font-medium">
-        <a
-          href="{% url 'ntx:project_report' slug=project.slug %}"
-          class="rounded-xl border border-slate-300 px-3 py-2 text-slate-700 hover:bg-slate-50"
-        >
-          View report
-        </a>
-        <a href="{% url 'ntx:projects' %}" class="text-slate-700 hover:underline">
-          Back to Projects
-        </a>
-      </div>
+<div class="flex flex-col gap-2 mb-6">
+  <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
+
+    <div>
+      <h2 class="text-2xl font-semibold tracking-tight text-slate-900">
+        {{ project.name }}
+      </h2>
+      <p class="text-sm text-slate-600">
+        {{ project.start_date|date:"Y-m-d"|default:"—" }} –
+        {{ project.end_date|date:"Y-m-d"|default:"—" }}
+      </p>
     </div>
+
+    <form
+    method="get"
+    action="{% url 'ntx:project_report' slug=project.slug %}"
+    class="flex items-center gap-3 text-sm font-medium"
+  >
+    <select
+      name="plot"
+      class="rounded-xl border border-slate-300 px-3 py-2 bg-white"
+    >
+      <option value="activity"
+        {% if request.GET.plot == "activity" or not request.GET.plot %}selected{% endif %}
+      >
+        Activity comparison
+      </option>
+  
+      <option value="heatmap"
+        {% if request.GET.plot == "heatmap" %}selected{% endif %}
+      >
+        Heatmap
+      </option>
+    </select>
+  
+    <button
+      type="submit"
+      class="rounded-xl border border-slate-300 px-3 py-2 hover:bg-slate-50"
+    >
+      View report
+    </button>
+  </form>
+    <a href="{% url 'ntx:projects' %}" class="text-slate-700 hover:underline">
+      Back to Projects
+    </a>
+
   </div>
+</div>
+
 
   <h3 class="text-lg font-semibold text-slate-900 mb-3">Experiments</h3>
 
