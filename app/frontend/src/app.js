@@ -31,6 +31,7 @@ function projectReport(options = {}) {
       Array.isArray(options.params) && options.params.length > 0
         ? options.params
         : defaultParams, // Parameters sent to the report API.
+    plot:"activity",
     cards: [], // Plot card data returned by the API.
     loading: false, // UI flag for showing the loading state.
     requestId: 0, // Counter for ignoring stale responses.
@@ -65,6 +66,7 @@ function projectReport(options = {}) {
       const paramList =
         Array.isArray(this.params) && this.params.length > 0 ? this.params : defaultParams;
       url.searchParams.set("params", paramList.join(","));
+      url.searchParams.set("plot", this.plot);
       return url;
     },
 
@@ -73,7 +75,6 @@ function projectReport(options = {}) {
       const requestId = ++this.requestId;
       this.loading = true;
       this.clearMessages();
-
       // Ensure loading is cleared only for the latest pending request.
       const finish = () => {
         if (requestId === this.requestId) {

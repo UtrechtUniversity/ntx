@@ -43,9 +43,14 @@ def project_report_api(request, slug: str):
     if not params:
         params = list(DEFAULT_ACTIVITY_COMPARISON_PARAMS)
 
+    plot = request.GET.get("plot", "activity")
+    if plot not in {"activity", "heatmap"}:
+        plot = "activity"
+
     try:
         payload = build_project_report_payload(
             project,
+            plot=plot,
             params=params,
         )
     except AnalysisPipelineError as exc:
