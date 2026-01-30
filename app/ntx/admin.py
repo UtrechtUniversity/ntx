@@ -5,6 +5,7 @@ import tempfile
 from collections.abc import Sequence
 from datetime import datetime
 from typing import Any, cast
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from django import forms
 from django.contrib import admin
@@ -14,6 +15,10 @@ from django.db.models import Count
 from django.forms import Textarea
 from django.template.loader import render_to_string
 from django.utils.safestring import SafeString, mark_safe
+from django.db import transaction
+from django.contrib import messages
+from django.utils import timezone
+from django.utils.text import slugify
 
 from ntx.ingest.metadata import collect_experiment_metadata_from_files
 
@@ -31,8 +36,11 @@ from .models import (
     NeuronalMetricsFrame,
     Project,
     Sex,
+    ExperimentStatus,
     _first_present,
 )
+
+
 
 Numeric = float | int | None
 
@@ -493,6 +501,17 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
         ),
         ("Layout summary (editable)", {"fields": ("layout_date", "layout_wells", "control_group")}),
     )
+    actions = ["promote_to_experiment"]
+
+    def _to_concentration(self, value):
+        if value is None or value == "":
+            return None
+        try:
+            d = Decimal(str(value))  # IMPORTANT: avoids float artifacts
+        except (InvalidOperation, ValueError, TypeError):
+            return None
+        return d.quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
+
 
     def get_fieldsets(self, request, obj=None):  # type: ignore[override]
         # obj is None → add view; obj is not None → change view
@@ -503,7 +522,68 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
         if obj is None:
             return ()
         return (ExperimentIngestGroupInline,)
+    
+    @admin.action(description="Promote selected ingests to Experiments")
+    def promote_to_experiment(self, request, queryset):
 
+        created = 0
+        skipped = 0
+
+        with transaction.atomic():
+
+            for ingest in queryset.filter(status=ExperimentIngest.Status.PARSED):
+
+                if Experiment.objects.filter(code=ingest.code).exists():
+                    skipped += 1
+                    continue
+
+                exp = Experiment.objects.create(
+                    project=ingest.project,
+                    code=ingest.code,
+                    sex=ingest.sex,
+                    date=ingest.date,
+                    cell_line=ingest.cell_line,
+                    researcher=ingest.experimenter,
+                    status=ExperimentStatus.INGESTED,
+                    parsed_at=timezone.now(),
+                )
+
+                for g in ingest.ingest_groups.all():
+
+                    chemical, _ = Chemical.objects.get_or_create(
+                        name=g.compound or "Unknown",
+                        defaults={"slug": slugify(g.compound or "unknown")},
+                    )
+
+                    unit = None
+                    if g.unit:
+                        unit, _ = ConcentrationUnit.objects.get_or_create(
+                            symbol=g.unit,
+                            defaults={"name": g.unit, "slug": slugify(g.unit)},
+                        )
+
+                    wells = g.wells.split() if g.wells else []
+
+                    Condition.objects.create(
+                        experiment=exp,
+                        name=g.name,
+                        chemical=chemical,
+                        concentration=self._to_concentration(g.dosage),
+                        unit=unit,
+                        wells=wells,
+                        is_control="control" in g.name.lower(),
+                    )
+
+                ingest.status = ExperimentIngest.Status.INGESTED
+                ingest.save(update_fields=["status"])
+
+                created += 1
+
+        self.message_user(
+            request,
+            f"{created} experiments created, {skipped} skipped.",
+            level=messages.SUCCESS,
+        )
 
     def save_model(self, request, obj, form, change):
         """
@@ -519,18 +599,13 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
         should_parse = False
 
         if not change:
-            # ADD view
             if "_continue" in request.POST:
-                # Only "Save and continue editing" parses immediately
                 should_parse = True
         else:
-            # CHANGE view
             if obj.status == ExperimentIngest.Status.PENDING:
-                # When user opens a PENDING row and saves it, parse now
                 should_parse = True
 
         if should_parse:
-            # Transient flag that models.ExperimentIngest.save() will look at
             obj._should_parse = True
 
         super().save_model(request, obj, form, change)
@@ -540,7 +615,7 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
 
         obj: ExperimentIngest = form.instance
         if change:
-            return  # don't auto-overwrite on edits
+            return
 
         groups = obj.layout_groups or []
         if not isinstance(groups, list):
