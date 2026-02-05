@@ -21,22 +21,26 @@ function hasPlotly() {
 
 // Alpine component factory for the report page; provides state + actions.
 function projectReport(options = {}) {
-  // Default report parameters if the page does not specify any.
-  const defaultParams = ["number_of_spikes", "isi_coefficient_of_variation"];
-
   // Component state and methods that Alpine binds to the report view.
   return {
     apiUrl: options.apiUrl, // Base API endpoint injected by the template.
-    params:
-      Array.isArray(options.params) && options.params.length > 0
-        ? options.params
-        : defaultParams, // Parameters sent to the report API.
-    plot:"activity",
+    plotOptions: Array.isArray(options.plotOptions) ? options.plotOptions : [], // Options for selector.
+    plot: typeof options.plot === "string" ? options.plot : "", // Current plot key.
+    availableParams: [], // Parameter options returned by the report API.
+    defaultSelectedParams: [], // Backend-provided default parameter keys.
+    selectedParams: [], // Active parameter keys used for rendering.
     cards: [], // Plot card data returned by the API.
     loading: false, // UI flag for showing the loading state.
     requestId: 0, // Counter for ignoring stale responses.
-    warnings: [], // Non-blocking warnings to show to the user.
     errorMessage: "", // User-facing error message to display.
+
+    get activePlot() {
+      if (!this.plotOptions.length) {
+        return null;
+      }
+      // Provides label/description for the UI header.
+      return this.plotOptions.find((option) => option.value === this.plot) || this.plotOptions[0];
+    },
 
     init() {
       // Fail fast if the component is misconfigured.
@@ -45,6 +49,9 @@ function projectReport(options = {}) {
         return;
       }
 
+      if (!this.normalizePlot()) {
+        return;
+      }
       // Load the report once the component initializes.
       this.load();
     },
@@ -56,18 +63,51 @@ function projectReport(options = {}) {
 
     clearMessages() {
       // Reset per-request messages when starting a new request.
-      this.warnings = [];
       this.errorMessage = "";
     },
 
+    normalizePlot() {
+      if (this.plotOptions.length === 0) {
+        // Without options we cannot pick a valid plot to request.
+        this.setError("No plot options available.");
+        return false;
+      }
+
+      if (!this.plot || !this.plotOptions.some((option) => option.value === this.plot)) {
+        // Ensure the plot key is always valid for the selector + API.
+        this.plot = this.plotOptions[0].value;
+      }
+      return true;
+    },
+
+    resetParams() {
+      // Revert local selection to backend defaults.
+      this.selectedParams = [...this.defaultSelectedParams];
+    },
+
+    applyParams() {
+      // Fetch plots using the current parameter selection.
+      this.load();
+    },
+
     buildUrl() {
-      // Build the report URL with the chosen parameter list.
+      // Build the report URL with selected plot + parameters.
       const url = new URL(this.apiUrl, window.location.origin);
-      const paramList =
-        Array.isArray(this.params) && this.params.length > 0 ? this.params : defaultParams;
-      url.searchParams.set("params", paramList.join(","));
+      if (this.selectedParams.length > 0) {
+        url.searchParams.set("params", this.selectedParams.join(","));
+      }
+      // Plot is required by the API, so always include a valid selection.
       url.searchParams.set("plot", this.plot);
       return url;
+    },
+
+    applyPayload(payload) {
+      // Backend declares available/default/selected params.
+      this.availableParams = Array.isArray(payload.available_params) ? payload.available_params : [];
+      this.defaultSelectedParams = Array.isArray(payload.default_selected_params)
+        ? payload.default_selected_params
+        : [];
+      this.selectedParams = Array.isArray(payload.selected_params) ? payload.selected_params : [];
     },
 
     async load() {
@@ -132,7 +172,7 @@ function projectReport(options = {}) {
       }
 
       // Normalize response payload so the template can render safely.
-      this.warnings = Array.isArray(payload.warnings) ? payload.warnings : [];
+      this.applyPayload(payload);
       this.cards = Array.isArray(payload.cards) ? payload.cards : [];
       if (!this.cards.length) {
         // Let users know the API returned an empty report.

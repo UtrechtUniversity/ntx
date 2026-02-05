@@ -1,18 +1,15 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any
 
 import plotly.graph_objects as go
 
-from ntx.analysis.dtos import AnalysisPipelineResult, ConditionInfo, ParamInfo
+from ntx.analysis.dtos import AnalysisPipelineResult, ConditionInfo
 
-from .contracts import PlotlyCard, PlotlyCardError, PlotlyFigure
+from .contracts import PlotlyCard, PlotlyFigure
 from .serialize import serialize_figure
 from .text import escape_plot_text
 from .theme import DEFAULT_PLOTLY_CONFIG, apply_theme
-
-HOVER_TEMPLATE = "%{x}<br>%{y:.2f}%<extra></extra>"
 
 
 def build_heatmap_card(
@@ -20,6 +17,14 @@ def build_heatmap_card(
     *,
     params: Sequence[str],
 ) -> list[PlotlyCard]:
+    if not params or not result.labels.params:
+        return []
+
+    param_lookup = {param.key: param for param in result.labels.params}
+    unknown_params = [param for param in params if param not in param_lookup]
+    if unknown_params:
+        raise ValueError(f"Unknown parameter(s) requested for heatmap: {', '.join(unknown_params)}")
+
     fig = _build_param_condition_heatmap(result, params)
     figure_json = serialize_figure(fig)
 
@@ -27,12 +32,12 @@ def build_heatmap_card(
         PlotlyCard(
             id="heatmap:params_vs_concentration",
             title="Parameter response heatmap",
-            status="ok",
             figure=PlotlyFigure(**figure_json),
             config=dict(DEFAULT_PLOTLY_CONFIG),
             meta={
                 "plot_type": "heatmap",
                 "params": list(params),
+                "card_order": 0,
             },
         )
     ]
@@ -75,11 +80,7 @@ def _build_param_condition_heatmap(
             y=y_conditions,
             z=z_matrix,
             colorbar=dict(title="Response (%)"),
-            hovertemplate=(
-                "Condition: %{y}<br>"
-                "Param: %{x}<br>"
-                "Value: %{z:.2f}%<extra></extra>"
-            ),
+            hovertemplate=("Condition: %{y}<br>Param: %{x}<br>Value: %{z:.2f}%<extra></extra>"),
         )
     )
 
@@ -93,11 +94,6 @@ def _build_param_condition_heatmap(
     # )
 
     return fig
-
-
-
-def _format_param_label(param_key: str) -> str:
-    return escape_plot_text(param_key.replace("_", " ").replace("  ", " ").strip().title())
 
 
 def _condition_sort_key(info: ConditionInfo) -> tuple[int, str, str, float, str]:

@@ -137,7 +137,6 @@ def test_build_activity_comparison_plot_orders_and_scales_values():
     assert len(cards) == 2
 
     card = next(entry for entry in cards if entry.meta.get("param_key") == "number_of_spikes")
-    assert card.status == "ok"
     assert card.figure is not None
 
     series_names = [trace.get("name") for trace in card.figure.data]
@@ -193,10 +192,8 @@ def test_build_activity_comparison_plot_rejects_unknown_param():
     )
 
     result = run_experiment_analysis([experiment.id])
-    cards = build_activity_comparison_cards(result, params=["not_a_param"])
-    assert cards[0].status == "error"
-    assert cards[0].error is not None
-    assert cards[0].error.code == "UNKNOWN_PARAM"
+    with pytest.raises(ValueError, match="Unknown parameter requested for activity comparison"):
+        build_activity_comparison_cards(result, params=["not_a_param"])
 
 
 def test_project_report_payload_includes_activity_comparison_plot():
@@ -238,14 +235,15 @@ def test_project_report_payload_includes_activity_comparison_plot():
     )
 
     payload = build_project_report_payload(
-        project, params=["number_of_spikes", "isi_coefficient_of_variation"]
+        project,
+        plot="activity_comparison",
+        params=["number_of_spikes"],
     )
     assert payload["version"] == 1
-    assert payload["warnings"] == []
     assert payload["cards"]
+    assert payload["selected_params"] == ["number_of_spikes"]
     card = payload["cards"][0]
     assert card["type"] == "plotly"
-    assert card["status"] == "ok"
     assert card["figure"]["data"]
     assert card["figure"]["layout"]
 
@@ -289,7 +287,13 @@ def test_project_report_api_returns_json(client):
     )
 
     url = reverse("ntx:project_report_api", kwargs={"slug": project.slug})
-    response = client.get(url, {"params": "number_of_spikes,isi_coefficient_of_variation"})
+    response = client.get(
+        url,
+        {
+            "plot": "activity_comparison",
+            "params": "number_of_spikes",
+        },
+    )
     assert response.status_code == 200
     payload = response.json()
     assert payload["version"] == 1

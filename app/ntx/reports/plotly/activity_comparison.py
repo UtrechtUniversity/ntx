@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 
 from ntx.analysis.dtos import AnalysisPipelineResult, ConditionInfo, ParamInfo
 
-from .contracts import PlotlyCard, PlotlyCardError, PlotlyFigure
+from .contracts import PlotlyCard, PlotlyFigure
 from .serialize import serialize_figure
 from .text import escape_plot_text
 from .theme import DEFAULT_PLOTLY_CONFIG, apply_theme
@@ -20,10 +20,8 @@ def build_activity_comparison_cards(
     *,
     params: Sequence[str],
 ) -> list[PlotlyCard]:
-    if not params:
-        raise ValueError("No parameters requested for activity comparison.")
-    if not result.labels.params:
-        raise ValueError("No parameters available for activity comparison.")
+    if not params or not result.labels.params:
+        return []
 
     param_lookup = {param.key: param for param in result.labels.params}
     conditions = sorted(result.labels.conditions, key=_condition_sort_key)
@@ -37,60 +35,24 @@ def build_activity_comparison_cards(
     cards: list[PlotlyCard] = []
     for order, param_key in enumerate(params):
         param = param_lookup.get(param_key)
-        title = escape_plot_text(param.label) if param else _format_param_label(param_key)
-        if not param:
-            cards.append(
-                PlotlyCard(
-                    id=f"activity_comparison:{param_key}:error",
-                    title=title,
-                    status="error",
-                    error=PlotlyCardError(
-                        code="UNKNOWN_PARAM",
-                        message=f"Unknown parameter '{param_key}'.",
-                    ),
-                    config=dict(DEFAULT_PLOTLY_CONFIG),
-                    meta={
-                        "plot_type": "activity_comparison",
-                        "card_order": order,
-                        "param_key": param_key,
-                    },
-                )
+        if param is None:
+            raise ValueError(f"Unknown parameter requested for activity comparison: {param_key}")
+        fig = _build_param_figure(param, conditions, aggregates)
+        figure_json = serialize_figure(fig)
+        cards.append(
+            PlotlyCard(
+                id=f"activity_comparison:{param.key}",
+                title=escape_plot_text(param.label),
+                figure=PlotlyFigure(**figure_json),
+                config=dict(DEFAULT_PLOTLY_CONFIG),
+                meta={
+                    "plot_type": "activity_comparison",
+                    "card_order": order,
+                    "param_key": param.key,
+                    "condition_labels": condition_labels,
+                },
             )
-            continue
-
-        try:
-            fig = _build_param_figure(param, conditions, aggregates)
-            figure_json = serialize_figure(fig)
-            cards.append(
-                PlotlyCard(
-                    id=f"activity_comparison:{param.key}",
-                    title=title,
-                    status="ok",
-                    figure=PlotlyFigure(**figure_json),
-                    config=dict(DEFAULT_PLOTLY_CONFIG),
-                    meta={
-                        "plot_type": "activity_comparison",
-                        "card_order": order,
-                        "param_key": param.key,
-                        "condition_labels": condition_labels,
-                    },
-                )
-            )
-        except Exception as exc:  # noqa: BLE001 - card-level error isolation.
-            cards.append(
-                PlotlyCard(
-                    id=f"activity_comparison:{param.key}:error",
-                    title=title,
-                    status="error",
-                    error=PlotlyCardError(code="FIGURE_BUILD_FAILED", message=str(exc)),
-                    config=dict(DEFAULT_PLOTLY_CONFIG),
-                    meta={
-                        "plot_type": "activity_comparison",
-                        "card_order": order,
-                        "param_key": param.key,
-                    },
-                )
-            )
+        )
     return cards
 
 
@@ -125,10 +87,6 @@ def _build_param_figure(
     fig.update_xaxes(categoryorder="array", categoryarray=x_labels, tickangle=-30, automargin=True)
     fig.update_yaxes(title_text="Treatment response (%)", rangemode="tozero", automargin=True)
     return fig
-
-
-def _format_param_label(param_key: str) -> str:
-    return escape_plot_text(param_key.replace("_", " ").replace("  ", " ").strip().title())
 
 
 def _condition_sort_key(info: ConditionInfo) -> tuple[int, str, str, float, str]:

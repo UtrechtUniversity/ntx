@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from .contracts import PlotlyCard, PlotlyCardError, PlotlyFigure, ProjectReportPayload
+from .contracts import PlotlyCard, PlotlyFigure, ProjectReportPayload
 
 __all__ = [
     "PlotlyCard",
-    "PlotlyCardError",
     "PlotlyFigure",
     "ProjectReportPayload",
 ]

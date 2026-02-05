@@ -16,38 +16,17 @@
       </p>
     </div>
 
-    <form
-    method="get"
-    action="{% url 'ntx:project_report' slug=project.slug %}"
-    class="flex items-center gap-3 text-sm font-medium"
-  >
-    <select
-      name="plot"
-      class="rounded-xl border border-slate-300 px-3 py-2 bg-white"
-    >
-      <option value="activity"
-        {% if request.GET.plot == "activity" or not request.GET.plot %}selected{% endif %}
+    <div class="flex items-center gap-3 text-sm font-medium">
+      <a
+        href="{% url 'ntx:project_report' slug=project.slug %}"
+        class="rounded-xl border border-slate-300 px-3 py-2 hover:bg-slate-50"
       >
-        Activity comparison
-      </option>
-  
-      <option value="heatmap"
-        {% if request.GET.plot == "heatmap" %}selected{% endif %}
-      >
-        Heatmap
-      </option>
-    </select>
-  
-    <button
-      type="submit"
-      class="rounded-xl border border-slate-300 px-3 py-2 hover:bg-slate-50"
-    >
-      View report
-    </button>
-  </form>
-    <a href="{% url 'ntx:projects' %}" class="text-slate-700 hover:underline">
-      Back to Projects
-    </a>
+        View report
+      </a>
+      <a href="{% url 'ntx:projects' %}" class="text-slate-700 hover:underline">
+        Back to Projects
+      </a>
+    </div>
 
   </div>
 </div>

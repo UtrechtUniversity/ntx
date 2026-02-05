@@ -12,26 +12,97 @@
       </p>
     </div>
 
+    <!-- Alpine reads plot metadata from this JSON to render the selector. -->
+    {{ plot_options|json_script:"plot-options-data" }}
     <section
       class="flex flex-col gap-3"
-      x-data="projectReport({ apiUrl: '{% url "ntx:project_report_api" slug=project.slug %}' })"
+      x-data="projectReport({
+        apiUrl: '{% url "ntx:project_report_api" slug=project.slug %}',
+        plotOptions: JSON.parse(document.getElementById('plot-options-data').textContent)
+      })"
     >
-      <header class="flex items-center justify-between gap-4 flex-wrap">
+      <header class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <h3 class="text-lg font-semibold">Activity comparison</h3>
-          <p class="text-sm text-slate-600">
-            Number of spikes and ISI coefficient of variation (avg), mean +/- SEM.
-          </p>
+          <h3 class="text-lg font-semibold" x-text="activePlot ? activePlot.label : 'Report plots'"></h3>
+          <p
+            class="text-sm text-slate-600"
+            x-show="activePlot && activePlot.description"
+            x-text="activePlot ? activePlot.description : ''"
+          ></p>
         </div>
-        <button
-          type="button"
-          class="rounded-md bg-slate-900 text-white px-3 py-2 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
-          @click="load()"
-          :disabled="loading"
-        >
-          <span x-text="loading ? 'Loading...' : 'Reload'">Reload</span>
-        </button>
+        <div class="flex flex-wrap items-center gap-2">
+          <label class="text-sm font-medium text-slate-700">Plot type</label>
+          <select
+            class="rounded-md border border-slate-300 px-3 py-2 text-sm"
+            x-model="plot"
+            @change="load()"
+            :disabled="loading"
+          >
+            <template x-for="option in plotOptions" :key="option.value">
+              <option :value="option.value" x-text="option.label"></option>
+            </template>
+          </select>
+          <button
+            type="button"
+            class="rounded-md bg-slate-900 text-white px-3 py-2 text-sm hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
+            @click="load()"
+            :disabled="loading"
+          >
+            <span x-text="loading ? 'Loading...' : 'Reload'">Reload</span>
+          </button>
+        </div>
       </header>
+
+      <section class="rounded-lg border border-slate-200 bg-white/60 p-3">
+        <header class="flex flex-wrap items-center justify-between gap-2">
+          <h4 class="text-sm font-semibold text-slate-900">Parameters</h4>
+          <p class="text-xs text-slate-600" x-text="`${selectedParams.length} selected`"></p>
+        </header>
+        <p
+          class="mt-2 text-sm text-slate-600"
+          x-show="availableParams.length === 0"
+        >
+          No parameters available.
+        </p>
+        <div
+          class="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 max-h-56 overflow-auto pr-1"
+          x-show="availableParams.length > 0"
+        >
+          <template x-for="param in availableParams" :key="param.key">
+            <label class="flex items-start gap-2 rounded-md border border-slate-200 bg-white px-2 py-2 text-sm">
+              <input
+                type="checkbox"
+                class="mt-0.5 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+                :value="param.key"
+                x-model="selectedParams"
+                :disabled="loading"
+              >
+              <span class="flex flex-col leading-tight">
+                <span x-text="param.label"></span>
+                <span class="text-xs text-slate-500" x-text="param.section"></span>
+              </span>
+            </label>
+          </template>
+        </div>
+        <div class="mt-3 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            class="rounded-md bg-slate-900 text-white px-3 py-2 text-sm hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
+            @click="applyParams()"
+            :disabled="loading || availableParams.length === 0"
+          >
+            Apply parameters
+          </button>
+          <button
+            type="button"
+            class="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            @click="resetParams(); applyParams();"
+            :disabled="loading || defaultSelectedParams.length === 0"
+          >
+            Reset defaults
+          </button>
+        </div>
+      </section>
 
       <div
         class="grid gap-4 items-start"
@@ -43,30 +114,15 @@
               <h4 class="text-sm font-semibold text-slate-900" x-show="card.title" x-text="card.title"></h4>
               <p class="text-xs text-slate-600" x-show="card.subtitle" x-text="card.subtitle"></p>
             </header>
-
-            <template x-if="card.status === 'error'">
-              <div class="mt-3 whitespace-pre-line rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-900">
-                <p class="font-semibold">Plot failed to render</p>
-                <p x-text="card.error?.message || 'Unknown error.'"></p>
-              </div>
-            </template>
-
-            <template x-if="card.status !== 'error'">
-              <div
-                class="w-full min-h-80 mt-2"
-                style="min-width: 0;"
-                x-plotly="card"
-              ></div>
-            </template>
+            <div
+              class="w-full min-h-80 mt-2"
+              style="min-width: 0;"
+              x-plotly="card"
+            ></div>
           </section>
         </template>
       </div>
 
-      <div
-        class="hidden whitespace-pre-line rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
-        :class="{ hidden: warnings.length === 0 }"
-        x-text="warnings.join('\n')"
-      ></div>
       <div
         class="hidden whitespace-pre-line rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900"
         :class="{ hidden: !errorMessage }"

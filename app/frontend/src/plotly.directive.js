@@ -39,15 +39,7 @@ document.addEventListener("alpine:init", () => {
         }
 
         // The expression must evaluate to a PlotlyCard:
-        // { status:"ok", figure:{data,layout,frames?}, config:{...} }
-        if (fig.status && fig.status !== "ok") {
-          if (typeof window.Plotly.purge === "function") {
-            try {
-              window.Plotly.purge(el);
-            } catch (err) {}
-          }
-          return;
-        }
+        // { figure:{data,layout,frames?}, config:{...} }
         const figure = fig.figure && typeof fig.figure === "object" ? fig.figure : null;
         const data = Array.isArray(figure?.data) ? figure.data : [];
         const layout = figure?.layout && typeof figure.layout === "object" ? figure.layout : {};

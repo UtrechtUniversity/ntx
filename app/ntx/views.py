@@ -7,7 +7,8 @@ from django.views.decorators.http import require_GET
 
 from .analysis.pipeline import AnalysisPipelineError
 from .models import Condition, Experiment, Project
-from .reports.service import DEFAULT_ACTIVITY_COMPARISON_PARAMS, build_project_report_payload
+from .reports.plotly.builders import build_plot_options
+from .reports.service import build_project_report_payload
 
 
 def projects_overview(request):
@@ -27,25 +28,34 @@ def project_detail(request, slug: str):
 
 def project_report(request, slug: str):
     project = get_object_or_404(Project, slug=slug)
-    return render(request, "ntx/project_report.html", {"project": project})
+    plot_options = build_plot_options()
+    return render(
+        request,
+        "ntx/project_report.html",
+        {
+            "project": project,
+            "plot_options": plot_options,
+        },
+    )
 
 
 @require_GET
 def project_report_api(request, slug: str):
     project = get_object_or_404(Project, slug=slug)
 
-    raw_params = request.GET.getlist("params")
-    params: list[str] = []
-    if len(raw_params) == 1:
-        params = [item.strip() for item in raw_params[0].split(",") if item.strip()]
-    elif raw_params:
-        params = [item.strip() for item in raw_params if item.strip()]
-    if not params:
-        params = list(DEFAULT_ACTIVITY_COMPARISON_PARAMS)
+    params_input = request.GET.getlist("params")
+    params: list[str] | None = None
+    if len(params_input) == 1:
+        parsed_params = [item.strip() for item in params_input[0].split(",") if item.strip()]
+    elif params_input:
+        parsed_params = [item.strip() for item in params_input if item.strip()]
+    else:
+        parsed_params = []
+    if parsed_params:
+        params = parsed_params
 
-    plot = request.GET.get("plot", "activity")
-    if plot not in {"activity", "heatmap"}:
-        plot = "activity"
+    # Pass raw plot key through the builder registry (validated downstream).
+    plot = request.GET.get("plot")
 
     try:
         payload = build_project_report_payload(
@@ -53,7 +63,7 @@ def project_report_api(request, slug: str):
             plot=plot,
             params=params,
         )
-    except AnalysisPipelineError as exc:
+    except (AnalysisPipelineError, ValueError) as exc:
         return JsonResponse({"error": str(exc)}, status=400)
 
     return JsonResponse(payload)
