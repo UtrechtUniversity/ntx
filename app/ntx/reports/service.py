@@ -17,7 +17,15 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_REPORT_PARAMS: Sequence[str] = (
     "number_of_spikes",
-    "isi_coefficient_of_variation",
+    "number_of_bursts",
+    "burst_duration",
+    "spikes_per_burst",
+    "inter_burst_interval",
+    "number_of_network_bursts",
+    "network_burst_duration",
+    "spikes_per_network_burst",
+    "mean_isi_within_network_burst",
+    "area_under_normalized_cross_correlation",
 )
 
 

@@ -248,6 +248,62 @@ def test_project_report_payload_includes_activity_comparison_plot():
     assert card["figure"]["layout"]
 
 
+def test_project_report_payload_uses_standard_default_param_selection():
+    project = Project.objects.create(name="Report Service Defaults Project")
+    unit = ConcentrationUnit.objects.create(name="uM", symbol="uM", slug="um")
+    chemical = Chemical.objects.create(name="ChemA")
+    control = Chemical.objects.create(name="DMSO")
+
+    experiment = Experiment.objects.create(
+        project=project, code="EXP-SERVICE-DEFAULTS", default_concentration_unit=unit
+    )
+    Condition.objects.create(
+        experiment=experiment,
+        name="Control",
+        chemical=control,
+        concentration=None,
+        unit=unit,
+        is_control=True,
+        wells=["A1"],
+    )
+    Condition.objects.create(
+        experiment=experiment,
+        name="0.1 uM",
+        chemical=chemical,
+        concentration="0.1",
+        unit=unit,
+        is_control=False,
+        wells=["A2"],
+    )
+
+    default_params = [
+        "number_of_spikes",
+        "number_of_bursts",
+        "burst_duration",
+        "spikes_per_burst",
+        "inter_burst_interval",
+        "number_of_network_bursts",
+        "network_burst_duration",
+        "spikes_per_network_burst",
+        "mean_isi_within_network_burst",
+        "area_under_normalized_cross_correlation",
+    ]
+    NeuronalMetricsFrame.objects.create(
+        experiment=experiment,
+        div=0,
+        metrics_json=_metrics_payload(
+            wells=["A1", "A2"],
+            params=default_params,
+            ratios=[[1, 2] for _ in default_params],
+        ),
+        qc_json=_qc_payload(wells=["A1", "A2"]),
+    )
+
+    payload = build_project_report_payload(project, plot="heatmap")
+    assert payload["default_selected_params"] == default_params
+    assert payload["selected_params"] == default_params
+
+
 def test_project_report_api_returns_json(client):
     project = Project.objects.create(name="Report API Project")
     unit = ConcentrationUnit.objects.create(name="uM", symbol="uM", slug="um")

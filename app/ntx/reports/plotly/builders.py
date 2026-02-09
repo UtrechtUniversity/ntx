@@ -42,7 +42,7 @@ DEFAULT_PLOTLY_BUILDERS: list[PlotlyCardBuilder] = [
     PlotlyCardBuilder(
         key="activity_comparison",
         title="Activity comparison",
-        description="Number of spikes and ISI coefficient of variation (avg), mean +/- SEM.",
+        description="Treatment response (%) by condition (mean +/- SEM)",
         build=_build_activity_comparison,
     ),
     PlotlyCardBuilder(

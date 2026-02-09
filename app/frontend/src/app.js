@@ -42,6 +42,19 @@ function projectReport(options = {}) {
       return this.plotOptions.find((option) => option.value === this.plot) || this.plotOptions[0];
     },
 
+    get groupedAvailableParams() {
+      // Group parameters by section so labels are rendered once per group.
+      const groupsBySection = new Map();
+      for (const param of this.availableParams) {
+        const section = param.section.trim();
+        if (!groupsBySection.has(section)) {
+          groupsBySection.set(section, { section, params: [] });
+        }
+        groupsBySection.get(section).params.push(param);
+      }
+      return Array.from(groupsBySection.values());
+    },
+
     init() {
       // Fail fast if the component is misconfigured.
       if (!this.apiUrl) {
