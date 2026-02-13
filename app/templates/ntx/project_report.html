@@ -1,0 +1,166 @@
+{% extends "ntx/base.html" %}
+{% load static %}
+
+{% block title %}Report: {{ project.name }}{% endblock %}
+
+{% block content %}
+  <div class="flex flex-col gap-6">
+    <div class="flex flex-col gap-1">
+      <h2 class="text-2xl font-bold">Project report</h2>
+      <p class="text-slate-600">
+        {{ project.name }} (<span class="font-mono text-sm">{{ project.slug }}</span>)
+      </p>
+    </div>
+
+    <!-- Alpine reads plot metadata from this JSON to render the selector. -->
+    {{ plot_options|json_script:"plot-options-data" }}
+    {% url "ntx:project_report_api" slug=project.slug as project_report_api_url %}
+    <section
+      class="flex flex-col gap-3"
+      x-data="projectReport({
+        apiUrl: '{{ project_report_api_url|escapejs }}',
+        plotOptions: JSON.parse(document.getElementById('plot-options-data').textContent)
+      })"
+    >
+      <header class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div class="flex flex-col items-start gap-3">
+          <div
+            class="inline-flex self-start flex-wrap items-center gap-1 rounded-md border border-slate-300 bg-white p-1"
+            role="tablist"
+            aria-label="Plot type"
+          >
+            <template x-for="option in plotOptions" :key="option.value">
+              <button
+                type="button"
+                class="rounded px-3 py-1.5 text-sm transition disabled:opacity-50 disabled:cursor-not-allowed"
+                :class="plot === option.value
+                  ? 'bg-slate-900 text-white'
+                  : 'text-slate-700 hover:bg-slate-100'"
+                :aria-selected="plot === option.value"
+                :disabled="loading"
+                role="tab"
+                @click="if (plot !== option.value) { plot = option.value; load(); }"
+              >
+                <span x-text="option.label"></span>
+              </button>
+            </template>
+          </div>
+          <div>
+            <h3 class="text-lg font-semibold" x-text="activePlot ? activePlot.label : 'Report plots'"></h3>
+            <p
+              class="text-sm text-slate-600"
+              x-show="activePlot && activePlot.description"
+              x-text="activePlot ? activePlot.description : ''"
+            ></p>
+          </div>
+        </div>
+      </header>
+
+      <section class="rounded-lg border border-slate-200 bg-white/60 p-3">
+        <details open>
+          <summary class="cursor-pointer">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <h4 class="text-sm font-semibold text-slate-900">Parameters</h4>
+              <p class="text-xs text-slate-600" x-text="`${selectedParams.length} selected`"></p>
+            </div>
+          </summary>
+          <p
+            class="mt-2 text-sm text-slate-600"
+            x-show="availableParams.length === 0"
+          >
+            No parameters available.
+          </p>
+          <div
+            class="mt-2 flex flex-col gap-2"
+            x-show="availableParams.length > 0"
+          >
+            <template x-for="group in groupedAvailableParams" :key="group.section">
+              <section class="rounded-md border border-slate-200 bg-slate-50/60 p-2">
+                <h5 class="text-xs font-semibold uppercase tracking-wide text-slate-600" x-text="group.section"></h5>
+                <div
+                  class="mt-2 grid auto-rows-fr gap-2"
+                  style="grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));"
+                >
+                  <template x-for="param in group.params" :key="param.key">
+                    <label class="relative block h-full min-w-0 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        class="peer sr-only"
+                        :value="param.key"
+                        x-model="selectedParams"
+                        :disabled="loading"
+                      >
+                      <span
+                        class="flex h-full min-w-0 items-center rounded-md border px-2 py-1.5 text-sm select-none transition peer-focus-visible:ring-2 peer-focus-visible:ring-slate-500 peer-focus-visible:ring-offset-1 peer-disabled:cursor-not-allowed peer-disabled:opacity-50"
+                        :class="selectedParams.includes(param.key)
+                          ? 'border-slate-900 bg-slate-900 text-white'
+                          : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'"
+                      >
+                        <span class="min-w-0 flex-1 truncate" x-text="param.label"></span>
+                      </span>
+                    </label>
+                  </template>
+                </div>
+              </section>
+            </template>
+          </div>
+          <div class="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              class="rounded-md bg-slate-900 text-white px-3 py-2 text-sm hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              @click="applyParams()"
+              :disabled="loading || availableParams.length === 0"
+            >
+              Apply parameters
+            </button>
+            <button
+              type="button"
+              class="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
+              @click="selectedParams = []"
+              :disabled="loading || selectedParams.length === 0"
+            >
+              Clear parameters
+            </button>
+            <button
+              type="button"
+              class="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
+              @click="resetParams(); applyParams();"
+              :disabled="loading || defaultSelectedParams.length === 0"
+            >
+              Reset defaults
+            </button>
+          </div>
+        </details>
+      </section>
+
+      <div
+        class="grid gap-4 items-start"
+        style="grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));"
+      >
+        <template x-for="card in cards" :key="card.id">
+          <section class="rounded-lg border border-slate-200 bg-white/60 p-3" style="min-width: 0;">
+            <header class="flex flex-col gap-0.5">
+              <h4 class="text-sm font-semibold text-slate-900" x-show="card.title" x-text="card.title"></h4>
+              <p class="text-xs text-slate-600" x-show="card.subtitle" x-text="card.subtitle"></p>
+            </header>
+            <div
+              class="w-full min-h-80 mt-2"
+              style="min-width: 0;"
+              x-plotly="card"
+            ></div>
+          </section>
+        </template>
+      </div>
+
+      <div
+        class="hidden whitespace-pre-line rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900"
+        :class="{ hidden: !errorMessage }"
+        x-text="errorMessage"
+      ></div>
+    </section>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{% static 'vendor/plotly/plotly.min.js' %}"></script>
+{% endblock %}
