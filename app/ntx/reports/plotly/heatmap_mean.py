@@ -74,7 +74,7 @@ def _build_param_condition_heatmap(
         for param_key in params:
             record = aggregates.get((condition.label, param_key))
             value = record.mean * 100 if record and record.mean is not None else None
-            count  = record.n if record else None
+            count = record.n if record else None
             row.append(value)
             count_row.append(count)
         z_matrix.append(row)
@@ -85,11 +85,9 @@ def _build_param_condition_heatmap(
             x=x_params,
             y=y_conditions,
             z=z_matrix,
-
-            text = count_matrix,
+            text=count_matrix,
             texttemplate="%{text}",
             textfont=dict(color="black"),
-
             colorbar=dict(title="Response (%)"),
             hovertemplate=("Condition: %{y}<br>Param: %{x}<br>Value: %{z:.2f}%<extra></extra>"),
         )
