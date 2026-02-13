@@ -65,20 +65,31 @@ def _build_param_condition_heatmap(
     y_conditions = [escape_plot_text(c.label) for c in conditions]
 
     z_matrix: list[list[float | None]] = []
+    count_matrix: list[list[int | None]] = []
 
     for condition in conditions:
         row: list[float | None] = []
+        count_row: list[int | None] = []
+
         for param_key in params:
             record = aggregates.get((condition.label, param_key))
             value = record.mean * 100 if record and record.mean is not None else None
+            count  = record.n if record else None
             row.append(value)
+            count_row.append(count)
         z_matrix.append(row)
+        count_matrix.append(count_row)
 
     fig.add_trace(
         go.Heatmap(
             x=x_params,
             y=y_conditions,
             z=z_matrix,
+
+            text = count_matrix,
+            texttemplate="%{text}",
+            textfont=dict(color="black"),
+
             colorbar=dict(title="Response (%)"),
             hovertemplate=("Condition: %{y}<br>Param: %{x}<br>Value: %{z:.2f}%<extra></extra>"),
         )
