@@ -7,3 +7,7 @@ polars
 scipy
 statsmodels
 plotly
+gunicorn
+psycopg2-binary
+whitenoise
+
