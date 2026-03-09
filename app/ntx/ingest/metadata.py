@@ -66,10 +66,8 @@ def collect_experiment_metadata_from_files(
             name = "Control"
             control_group_name = name
             dosage = None
-            unit = ""
         else:
             dosage = float(cond.concentration) if cond.concentration is not None else None
-            unit = ""
             name = f"{dosage}" if dosage is not None else ""
 
         groups.append(
@@ -77,7 +75,7 @@ def collect_experiment_metadata_from_files(
                 "name": name,
                 "compound": merged_meta.chemical or "",
                 "dosage": dosage,
-                "unit": unit,
+                "unit": cond.unit,
                 "wells": " ".join(cond.wells),
             }
         )
