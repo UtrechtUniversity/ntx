@@ -44,7 +44,7 @@ class ExperimentLayout:
 def parse_group_name(name: str) -> dict[str, object]:
     name = str(name).strip()
     parts = name.split()
-    compound, dosage, unit = None, None, None
+    compound, concentration, unit = None, None, None
 
     pattern = re.compile(r"([\d\.]+)\s*([a-zA-Z/%µμ]*)")
 
@@ -52,9 +52,9 @@ def parse_group_name(name: str) -> dict[str, object]:
         match = pattern.fullmatch(part)
         if match:
             try:
-                dosage = float(match.group(1))
+                concentration = float(match.group(1))
             except ValueError:
-                dosage = None
+                concentration = None
 
             unit = match.group(2)
             if not unit and i + 1 < len(parts):
@@ -63,17 +63,17 @@ def parse_group_name(name: str) -> dict[str, object]:
             compound = " ".join(parts[:i]) if i > 0 else None
             break
 
-    if dosage is None:
+    if concentration is None:
         for i, part in enumerate(reversed(parts)):
             if part.replace(".", "", 1).isdigit():
-                dosage = float(part)
+                concentration = float(part)
                 compound = " ".join(parts[:-(i + 1)]) if (i + 1) < len(parts) else None
                 break
 
-    if compound is None and dosage is None:
+    if compound is None and concentration is None:
         compound = name
 
-    return {"compound": compound or None, "dosage": dosage, "unit": unit}
+    return {"compound": compound or None, "concentration": concentration, "unit": unit}
 
 
 def parse_layout_xlsx(path: str | Path) -> ExperimentLayout:
@@ -116,17 +116,17 @@ def parse_layout_xlsx(path: str | Path) -> ExperimentLayout:
                 raise LayoutError(f"Condition '{key}' has no wells listed")
 
             legacy = parse_group_name(key)
-            dosage = legacy["dosage"]
+            concentration = legacy["concentration"]
             compound = legacy["compound"]
             unit = legacy["unit"]
 
             is_control = any(k in lowered for k in ("control", "dmso"))
 
-            if is_control or dosage is None:
+            if is_control or concentration is None:
                 concentration: Decimal | None = None
             else:
                 try:
-                    concentration = Decimal(str(dosage))
+                    concentration = Decimal(str(concentration))
                 except Exception as exc:
                     raise LayoutError(f"Invalid concentration value '{key}'") from exc
 
