@@ -73,7 +73,7 @@ def collect_experiment_metadata_from_files(
         groups.append(
             {
                 "name": name,
-                "compound": merged_meta.chemical or "",
+                "compound": merged_meta.chemical or cond.chemical or "",
                 "dosage": dosage,
                 "unit": cond.unit,
                 "wells": " ".join(cond.wells),
