@@ -227,8 +227,8 @@ def _parse_plate_wells(value) -> int:
 
 def _validate_wells(conditions: Iterable[ConditionLayout], plate_wells: int) -> None:
     seen: set[str] = set()
-    dims = PLATE_DIMENSIONS.get(plate_wells)
-    row_limit, col_limit = dims if dims else (None, None)
+    dimensions = PLATE_DIMENSIONS.get(plate_wells)
+    row_limit, col_limit = dimensions if dimensions else (None, None)
 
     for condition in conditions:
         for well in condition.wells:
@@ -253,8 +253,8 @@ def _validate_wells(conditions: Iterable[ConditionLayout], plate_wells: int) -> 
             if col_limit is not None and col > col_limit:
                 raise LayoutError(f"Well '{well}' exceeds column limit")
 
-    if dims:
-        max_supported = dims[0] * dims[1]
+    if dimensions:
+        max_supported = dimensions[0] * dimensions[1]
         if len(seen) > max_supported:
             raise LayoutError(
                 f"Layout lists {len(seen)} wells exceeding plate capacity {max_supported}"
