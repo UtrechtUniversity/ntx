@@ -30,7 +30,7 @@ class ConditionLayout:
     concentration: Decimal | None
     wells: list[str]
     is_control: bool
-    compound: str | None = None
+    chemical: str | None = None
     unit: str | None = None 
 
 
@@ -44,7 +44,7 @@ class ExperimentLayout:
 def parse_group_name(name: str) -> dict[str, object]:
     name = str(name).strip()
     parts = name.split()
-    compound, concentration, unit = None, None, None
+    chemical, concentration, unit = None, None, None
 
     pattern = re.compile(r"([\d\.]+)\s*([a-zA-Z/%µμ]*)")
 
@@ -60,20 +60,20 @@ def parse_group_name(name: str) -> dict[str, object]:
             if not unit and i + 1 < len(parts):
                 unit = parts[i + 1]
 
-            compound = " ".join(parts[:i]) if i > 0 else None
+            chemical = " ".join(parts[:i]) if i > 0 else None
             break
 
     if concentration is None:
         for i, part in enumerate(reversed(parts)):
             if part.replace(".", "", 1).isdigit():
                 concentration = float(part)
-                compound = " ".join(parts[:-(i + 1)]) if (i + 1) < len(parts) else None
+                chemical = " ".join(parts[:-(i + 1)]) if (i + 1) < len(parts) else None
                 break
 
-    if compound is None and concentration is None:
-        compound = name
+    if chemical is None and concentration is None:
+        chemical = name
 
-    return {"compound": compound or None, "concentration": concentration, "unit": unit}
+    return {"chemical": chemical or None, "concentration": concentration, "unit": unit}
 
 
 def parse_layout_xlsx(path: str | Path) -> ExperimentLayout:
@@ -117,7 +117,7 @@ def parse_layout_xlsx(path: str | Path) -> ExperimentLayout:
 
             legacy = parse_group_name(key)
             concentration = legacy["concentration"]
-            compound = legacy["compound"]
+            chemical = legacy["chemical"]
             unit = legacy["unit"]
 
             is_control = any(k in lowered for k in ("control", "dmso"))
@@ -135,7 +135,7 @@ def parse_layout_xlsx(path: str | Path) -> ExperimentLayout:
                     concentration=concentration,
                     wells=wells,
                     is_control=is_control,
-                    compound=compound,
+                    chemical=chemical,
                     unit=unit,
                 )
             )
