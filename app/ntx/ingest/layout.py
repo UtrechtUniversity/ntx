@@ -230,8 +230,8 @@ def _validate_wells(conditions: Iterable[ConditionLayout], plate_wells: int) -> 
     dims = PLATE_DIMENSIONS.get(plate_wells)
     row_limit, col_limit = dims if dims else (None, None)
 
-    for cond in conditions:
-        for well in cond.wells:
+    for condition in conditions:
+        for well in condition.wells:
             if well in seen:
                 raise LayoutError(f"Duplicate well '{well}' in layout")
             seen.add(well)
