@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from datetime import datetime
 from typing import Any, cast
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+import json
 
 from django import forms
 from django.contrib import admin
@@ -19,8 +20,11 @@ from django.db import transaction
 from django.contrib import messages
 from django.utils import timezone
 from django.utils.text import slugify
+from django.http import HttpResponse
+from django.db.models import F, Q
 
 from ntx.ingest.metadata import collect_experiment_metadata_from_files
+from ntx.yoda_export import experiment_to_yoda_payload
 
 from .metrics_metadata import METRIC_SECTIONS
 from .metrics_schema import MetricsPayload
@@ -39,8 +43,6 @@ from .models import (
     ExperimentStatus,
     _first_present,
 )
-
-
 
 Numeric = float | int | None
 
@@ -124,7 +126,6 @@ def _render_qc_json_table(qc_json: object) -> SafeString:
 
     rows = [cast(list[Numeric], qc[param]) for param in params]
     return _render_metrics_table(params=params, wells=wells, rows=rows, is_ratio=False)
-
 
 class ReadOnlyAdminMixin:
     """
@@ -236,10 +237,37 @@ class ExperimentAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
         "condition_count",
         "well_count",
         "parsed_at",
+        "yoda_exported_at",
     )
     list_filter = ("status", "sex", "project")
     search_fields = ("code", "researcher", "cell_line", "manufacturer")
     list_select_related = ("project",)
+
+    actions = ["download_new_yoda_json"]
+    readonly_fields = ("yoda_exported_at",)
+
+    @admin.action(description="Download metadata in JSON for Yoda")
+    def download_new_yoda_json(self, request, queryset):
+        # Only export experiments that are new or updated since last export
+        qs = (
+            queryset
+            .filter(Q(yoda_exported_at__isnull=True) | Q(updated_at__gt=F("yoda_exported_at")))
+            .select_related("project")
+            .prefetch_related("conditions", "conditions__chemical", "conditions__unit")
+        )
+
+        payload = [experiment_to_yoda_payload(exp) for exp in qs]
+
+        # Mark exported
+        now = timezone.now()
+        qs.update(yoda_exported_at=now)
+
+        content = json.dumps(payload, indent=2, ensure_ascii=False)
+        resp = HttpResponse(content, content_type="application/json; charset=utf-8")
+        resp["Content-Disposition"] = f'attachment; filename="yoda_experiments_{now:%Y%m%d_%H%M%S}.json"'
+        
+        return resp
+
 
 class ExperimentIngestGroupForm(forms.ModelForm):
     class Meta:
@@ -503,15 +531,14 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
     )
     actions = ["promote_to_experiment"]
 
-    def _to_concentration(self, value):
-        if value is None or value == "":
+    def _parse_decimal(self, value):
+        if value in (None, ""):
             return None
         try:
-            d = Decimal(str(value))  # IMPORTANT: avoids float artifacts
+            d = Decimal(str(value))
         except (InvalidOperation, ValueError, TypeError):
             return None
         return d.quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
-
 
     def get_fieldsets(self, request, obj=None):  # type: ignore[override]
         # obj is None → add view; obj is not None → change view
@@ -568,7 +595,7 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
                         experiment=exp,
                         name=g.name,
                         chemical=chemical,
-                        concentration=self._to_concentration(g.dosage),
+                        concentration=g.dosage,
                         unit=unit,
                         wells=wells,
                         is_control="control" in g.name.lower(),
@@ -632,7 +659,7 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
                 ingest=obj,
                 name=name,
                 compound=(g.get("compound") or ""),
-                dosage=g.get("dosage"),
+                dosage=self._parse_decimal(g.get("dosage")),
                 unit=(g.get("unit") or ""),
                 wells=(g.get("wells") or ""),
             )

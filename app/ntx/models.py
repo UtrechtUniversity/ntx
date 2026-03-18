@@ -267,6 +267,7 @@ class Experiment(TimeStampedModel):
     status = models.CharField(
         max_length=16, choices=ExperimentStatus.choices, default=ExperimentStatus.CREATED
     )
+    yoda_exported_at = models.DateTimeField(null=True, blank=True, db_index=True)
 
     class Meta(TimeStampedModel.Meta):
         ordering = ["-date", "code"]
@@ -661,7 +662,12 @@ class ExperimentIngestGroup(TimeStampedModel):
     )
     name = models.CharField(max_length=255)
     compound = models.CharField(max_length=255, blank=True, default="")
-    dosage = models.FloatField(null=True, blank=True)
+    dosage = models.DecimalField(
+        max_digits=12,
+        decimal_places=6,
+        null=True,
+        blank=True,
+    )
     unit = models.CharField(max_length=32, blank=True, default="")
     wells = models.TextField(
         blank=True, default="", help_text="Space-separated wells, e.g. A1 A2 A3"
