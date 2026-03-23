@@ -505,7 +505,19 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
     search_fields = ("code", "chemical", "cell_line", "experimenter")
     readonly_fields = ("error_message", "created_at", "updated_at")
 
-    add_fieldsets = (("Uploads", {"fields": ("layout_file", "baseline_csv", "exposure_csv")}),)
+    add_fieldsets = (
+        (
+            "Uploads",
+            {
+                "fields": (
+                    "project",
+                    "layout_file",
+                    "baseline_csv",
+                    "exposure_csv"
+                )
+            },
+        ),
+    )
 
     change_fieldsets = (
         ("Logs", {"fields": ("error_message",)}),

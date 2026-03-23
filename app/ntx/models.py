@@ -421,6 +421,10 @@ class NeuronalMetricsFrame(TimeStampedModel):
 
     def clean(self):
         super().clean()
+        # Ensure metrics_json and qc_json match their Pydantic contracts before saving.
+        # JSON/JSONB cannot represent NaN/Inf; store missing/unusable as null.
+        # Knockouts are represented separately (ratio == -1) and handled in analysis.
+        # In ingestion, detect/log non-finite values *before* sanitizing for easier debugging.
 
         errors: dict[str, list[ErrorDetails]] = {}
 
@@ -475,8 +479,8 @@ class ExperimentIngest(TimeStampedModel):
         Project,
         on_delete=models.PROTECT,
         related_name="experiment_ingests",
-        null=True,
-        blank=True,
+        # null=True,
+        # blank=True,
     )
     status = models.CharField(
         max_length=16, choices=Status.choices, default=Status.PENDING, db_index=True
