@@ -479,8 +479,6 @@ class ExperimentIngest(TimeStampedModel):
         Project,
         on_delete=models.PROTECT,
         related_name="experiment_ingests",
-        # null=True,
-        # blank=True,
     )
     status = models.CharField(
         max_length=16, choices=Status.choices, default=Status.PENDING, db_index=True
