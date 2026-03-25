@@ -516,25 +516,12 @@ class ExperimentIngest(TimeStampedModel):
     def __str__(self) -> str:
         return f"ExperimentIngest #{self.pk or 'new'} ({self.status})"
 
-    def save(self, *args, **kwargs):
-        """
-        Save the ingest row.
-
-        Parsing of the uploaded files is *optional* and only happens when the
-        transient attribute `_should_parse` is set to True on the instance
-        (e.g. by the admin, depending on which button was pressed).
-        """
+    def parse_files(self) -> None:
+        if not (self.layout_file and self.baseline_csv and self.exposure_csv):
+            raise ValidationError({"layout_file": "All three files must be uploaded."})
 
         with transaction.atomic():
-            # Ensure uploaded files are on disk so .path works
-            super().save(*args, **kwargs)
-
-            # Only parse when explicitly requested
-            if not getattr(self, "_should_parse", False):
-                return
-
             try:
-                # Fill code/sex/div/... and layout_groups, etc.
                 self.populate_from_files()
                 self.status = self.Status.PARSED
                 self.error_message = ""
@@ -542,7 +529,7 @@ class ExperimentIngest(TimeStampedModel):
                 self.status = self.Status.ERROR
                 self.error_message = str(e)
 
-            super().save(
+            self.save(
                 update_fields=[
                     "status",
                     "error_message",
@@ -589,9 +576,9 @@ class ExperimentIngest(TimeStampedModel):
         )
 
         if not code:
-            self.status = self.Status.ERROR
-            self.error_message = "Could not extract experiment_id (code) from the uploaded files."
-            return
+            raise ValidationError(
+                {"layout_file": "Could not extract experiment_id (code) from the uploaded files."}
+            )
 
         self.code = code
 
@@ -654,6 +641,63 @@ class ExperimentIngest(TimeStampedModel):
             "exposure_filename_meta": merged.get("exposure_filename_meta"),
             "layout_meta": layout_meta,
         }
+    def execute_ingest(self) -> Experiment:
+        """
+        Promote this parsed ingest to an Experiment.
+        """
+        if self.status != self.Status.PARSED:
+            raise ValidationError("Only parsed ingests can be promoted to Experiment.")
+
+        if not self.project_id:
+            raise ValidationError({"project": "Project is required before promotion."})
+
+        with transaction.atomic():
+            if Experiment.objects.filter(code=self.code).exists():
+                raise ValidationError(
+                    {"code": f"Experiment with code '{self.code}' already exists."}
+                )
+
+            exp = Experiment.objects.create(
+                project=self.project,
+                code=self.code,
+                sex=self.sex,
+                date=self.date,
+                cell_line=self.cell_line,
+                researcher=self.experimenter,
+                status=ExperimentStatus.INGESTED,
+                parsed_at=timezone.now(),
+            )
+
+            for g in self.ingest_groups.all():
+                chemical, _ = Chemical.objects.get_or_create(
+                    name=g.compound or "Unknown",
+                    defaults={"slug": slugify(g.compound or "unknown")},
+                )
+
+                unit = None
+                if g.unit:
+                    unit, _ = ConcentrationUnit.objects.get_or_create(
+                        symbol=g.unit,
+                        defaults={"name": g.unit, "slug": slugify(g.unit)},
+                    )
+
+                wells = g.wells.split() if g.wells else []
+
+                Condition.objects.create(
+                    experiment=exp,
+                    name=g.name,
+                    chemical=chemical,
+                    concentration=g.dosage,
+                    unit=unit,
+                    wells=wells,
+                    is_control="control" in g.name.lower(),
+                )
+
+            self.status = self.Status.INGESTED
+            self.error_message = ""
+            self.save(update_fields=["status", "error_message", "updated_at"])
+
+        return exp
 
 
 class ExperimentIngestGroup(TimeStampedModel):

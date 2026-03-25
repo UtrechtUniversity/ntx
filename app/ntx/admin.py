@@ -564,65 +564,26 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
     
     @admin.action(description="Promote selected ingests to Experiments")
     def promote_to_experiment(self, request, queryset):
-
         created = 0
         skipped = 0
 
-        with transaction.atomic():
+        for ingest in queryset:
+            if ingest.status != ExperimentIngest.Status.PARSED:
+                skipped += 1
+                continue
 
-            for ingest in queryset.filter(status=ExperimentIngest.Status.PARSED):
-
-                if Experiment.objects.filter(code=ingest.code).exists():
-                    skipped += 1
-                    continue
-
-                exp = Experiment.objects.create(
-                    project=ingest.project,
-                    code=ingest.code,
-                    sex=ingest.sex,
-                    date=ingest.date,
-                    cell_line=ingest.cell_line,
-                    researcher=ingest.experimenter,
-                    status=ExperimentStatus.INGESTED,
-                    parsed_at=timezone.now(),
-                )
-
-                for g in ingest.ingest_groups.all():
-
-                    chemical, _ = Chemical.objects.get_or_create(
-                        name=g.compound or "Unknown",
-                        defaults={"slug": slugify(g.compound or "unknown")},
-                    )
-
-                    unit = None
-                    if g.unit:
-                        unit, _ = ConcentrationUnit.objects.get_or_create(
-                            symbol=g.unit,
-                            defaults={"name": g.unit, "slug": slugify(g.unit)},
-                        )
-
-                    wells = g.wells.split() if g.wells else []
-
-                    Condition.objects.create(
-                        experiment=exp,
-                        name=g.name,
-                        chemical=chemical,
-                        concentration=g.dosage,
-                        unit=unit,
-                        wells=wells,
-                        is_control="control" in g.name.lower(),
-                    )
-
-                ingest.status = ExperimentIngest.Status.INGESTED
-                ingest.save(update_fields=["status"])
-
+            try:
+                ingest.execute_ingest()
                 created += 1
+            except ValidationError:
+                skipped += 1
 
         self.message_user(
             request,
             f"{created} experiments created, {skipped} skipped.",
             level=messages.SUCCESS,
         )
+ 
 
     def save_model(self, request, obj, form, change):
         """
@@ -644,10 +605,10 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
             if obj.status == ExperimentIngest.Status.PENDING:
                 should_parse = True
 
-        if should_parse:
-            obj._should_parse = True
-
         super().save_model(request, obj, form, change)
+
+        if should_parse:
+            obj.parse_files()
 
     def save_related(self, request, form, formsets, change):
         super().save_related(request, form, formsets, change)
