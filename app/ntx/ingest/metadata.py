@@ -25,6 +25,8 @@ def collect_experiment_metadata_from_files(
     layout_file: str | Path,
     baseline_file: str | Path,
     exposure_file: str | Path,
+    baseline_filename: str | None = None,
+    exposure_filename: str | None = None,
 ) -> Dict[str, Any]:
     """
     Returns a dict with metadata extracted from filenames and layout files.
@@ -50,8 +52,8 @@ def collect_experiment_metadata_from_files(
         raise FileNotFoundError(f"Exposure file not found: {exposure_path}")
 
     # 1) Filename metadata
-    baseline_meta = parse_filename_metadata(baseline_path)
-    exposure_meta = parse_filename_metadata(exposure_path)
+    baseline_meta = parse_filename_metadata(baseline_filename or baseline_path)
+    exposure_meta = parse_filename_metadata(exposure_filename or exposure_path)
     merged_meta = baseline_meta.merge(exposure_meta)
 
     # 2) Layout metadata
@@ -62,12 +64,12 @@ def collect_experiment_metadata_from_files(
     control_group_name: str | None = None
 
     for cond in layout.conditions:
+        dosage = float(cond.concentration) if cond.concentration is not None else None
         if cond.is_control:
             name = "Control"
             control_group_name = name
-            dosage = None
+            # dosage = None
         else:
-            dosage = float(cond.concentration) if cond.concentration is not None else None
             name = f"{dosage}" if dosage is not None else ""
 
         groups.append(

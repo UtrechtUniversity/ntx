@@ -45,7 +45,7 @@ DATE_PATTERNS = [
 INITIALS_PATTERN = re.compile(r"^[A-Za-z]{2,4}$")
 EXPERIMENT_NUMBER_PATTERN = re.compile(r"^\d{6}$")
 PLATE_NUMBER_PATTERN = re.compile(r"^\d+-\d+$")
-DIV_PATTERN = re.compile(r"DIV\d+(?:\(\d+\))?", re.IGNORECASE)
+DIV_PATTERN = re.compile(r"DIV\s*\d+(?:\(\d+\))*", re.IGNORECASE)
 DURATION_PATTERN = re.compile(
     r"(\d+)\s*(s|sec|seconds|m|min|minutes|h|hr|hours|d|day|days)\b", re.IGNORECASE
 )
@@ -258,9 +258,9 @@ def _normalize_sex(value: str | None) -> str | None:
 def _parse_div(value: str | None) -> int | None:
     if value is None:
         return None
-    match = re.search(r"\d+", value)
+    match = re.search(r"\bDIV\s*(\d+)", value, re.IGNORECASE)
     if match:
-        return int(match.group(0))
+        return int(match.group(1))
     return None
 
 

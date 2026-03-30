@@ -493,6 +493,10 @@ class ExperimentIngest(TimeStampedModel):
     baseline_csv = models.FileField(upload_to="ingest/baselines/", max_length=500)
     exposure_csv = models.FileField(upload_to="ingest/exposures/", max_length=500)
 
+    original_layout_filename = models.CharField(max_length=500, blank=True, default="")
+    original_baseline_filename = models.CharField(max_length=500, blank=True, default="")
+    original_exposure_filename = models.CharField(max_length=500, blank=True, default="")
+
     code = models.CharField(max_length=128, blank=True, null=True, unique=True)
     sex = models.CharField(max_length=1, choices=Sex.choices, default=Sex.UNKNOWN)
     div = models.PositiveIntegerField(null=True, blank=True)
@@ -601,6 +605,8 @@ class ExperimentIngest(TimeStampedModel):
             layout_file=self.layout_file.path,
             baseline_file=self.baseline_csv.path,
             exposure_file=self.exposure_csv.path,
+            baseline_filename=self.original_baseline_filename or None,
+            exposure_filename=self.original_exposure_filename or None,
         )
 
         code = _first_present(

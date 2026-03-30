@@ -122,7 +122,7 @@ def parse_layout_xlsx(path: str | Path) -> ExperimentLayout:
 
             is_control = any(k in lowered for k in ("control", "dmso"))
 
-            if is_control or concentration is None:
+            if concentration is None:
                 concentration: Decimal | None = None
             else:
                 try:

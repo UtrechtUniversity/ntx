@@ -5,7 +5,7 @@ import tempfile
 from collections.abc import Sequence
 from datetime import datetime
 from typing import Any, cast
-# from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import Decimal
 import json
 
 from django import forms
@@ -291,6 +291,20 @@ class ExperimentIngestGroupForm(forms.ModelForm):
             ),
             
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        value = getattr(self.instance, "concentration", None)
+        if value is not None and "concentration" in self.fields:
+            try:
+                dec = value if isinstance(value, Decimal) else Decimal(str(value))
+                value_str = format(dec.normalize(), "f")
+                if "." in value_str:
+                    value_str = value_str.rstrip("0").rstrip(".")
+                self.initial["concentration"] = value_str or "0"
+            except Exception:
+                self.initial["concentration"] = value
 
 
 class ExperimentIngestGroupInline(admin.TabularInline):
@@ -598,6 +612,14 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
         if not change:
             if "_continue" in request.POST:
                 should_parse = True
+
+            if "layout_file" in request.FILES:
+                obj.original_layout_filename = request.FILES["layout_file"].name
+            if "baseline_csv" in request.FILES:
+                obj.original_baseline_filename = request.FILES["baseline_csv"].name
+            if "exposure_csv" in request.FILES:
+                obj.original_exposure_filename = request.FILES["exposure_csv"].name
+
         else:
             if obj.status == ExperimentIngest.Status.PENDING:
                 should_parse = True
@@ -649,7 +671,7 @@ class ConditionAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
         "name",
         "experiment",
         "chemical",
-        "concentration",
+        "formatted_concentration",
         "unit",
         "is_control",
         "well_count",
@@ -659,6 +681,17 @@ class ConditionAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     list_select_related = ("experiment", "chemical", "unit")
     readonly_fields = ("created_at", "updated_at")
     ordering = ("-is_control", "concentration", "name")
+
+    @admin.display(description="Concentration", ordering="concentration")
+    def formatted_concentration(self, obj):
+        value = obj.concentration
+        if value is None:
+            return "-"
+        value_str = format(value.normalize(), "f")
+        if "." in value_str:
+            value_str = value_str.rstrip("0").rstrip(".")
+        return value_str or "0"
+
 
     @admin.display(description="Wells")
     def well_count(self, obj):
