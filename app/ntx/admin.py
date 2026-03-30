@@ -5,7 +5,7 @@ import tempfile
 from collections.abc import Sequence
 from datetime import datetime
 from typing import Any, cast
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+# from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import json
 
 from django import forms
@@ -274,10 +274,10 @@ class ExperimentIngestGroupForm(forms.ModelForm):
         model = ExperimentIngestGroup
         fields = "__all__"
         widgets = {
-            "compound": forms.TextInput(
+            "chemical": forms.TextInput(
                 attrs={"size": 10, "style": "width: 10em;"}
             ),
-            "dosage": forms.TextInput(
+            "concentration": forms.TextInput(
                 attrs={
                     "size": 10,
                     "style": "width: 5em;",
@@ -289,12 +289,7 @@ class ExperimentIngestGroupForm(forms.ModelForm):
                     "style": "width: 5em;",
                 }
             ),
-            "name": forms.TextInput(
-                attrs={
-                    "size": 10,
-                    "style": "width: 5em;",
-                }
-            ),
+            
         }
 
 
@@ -302,8 +297,10 @@ class ExperimentIngestGroupInline(admin.TabularInline):
     model = ExperimentIngestGroup
     form = ExperimentIngestGroupForm
     extra = 0
-    fields = ("compound", "dosage", "unit", "wells", "name")
-    ordering = ("name",)
+    # fields = ("compound", "dosage", "unit", "wells", "name")
+    # ordering = ("name",)
+    fields = ("chemical", "concentration", "unit", "is_control", "wells")
+    ordering = ("id",)
     formfield_overrides = {
         models.TextField: {
             "widget": Textarea(attrs={"rows": 2, "cols": 25, "style": "resize: horizontal;"})
@@ -543,14 +540,14 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
     )
     actions = ["promote_to_experiment"]
 
-    def _parse_decimal(self, value):
-        if value in (None, ""):
-            return None
-        try:
-            d = Decimal(str(value))
-        except (InvalidOperation, ValueError, TypeError):
-            return None
-        return d.quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
+    # def _parse_decimal(self, value):
+    #     if value in (None, ""):
+    #         return None
+    #     try:
+    #         d = Decimal(str(value))
+    #     except (InvalidOperation, ValueError, TypeError):
+    #         return None
+    #     return d.quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
 
     def get_fieldsets(self, request, obj=None):  # type: ignore[override]
         # obj is None → add view; obj is not None → change view
@@ -610,32 +607,32 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
         if should_parse:
             obj.parse_files()
 
-    def save_related(self, request, form, formsets, change):
-        super().save_related(request, form, formsets, change)
+    # def save_related(self, request, form, formsets, change):
+    #     super().save_related(request, form, formsets, change)
 
-        obj: ExperimentIngest = form.instance
-        if change:
-            return
+    #     obj: ExperimentIngest = form.instance
+    #     if change:
+    #         return
 
-        groups = obj.layout_groups or []
-        if not isinstance(groups, list):
-            return
+    #     groups = obj.layout_groups or []
+    #     if not isinstance(groups, list):
+    #         return
 
-        obj.ingest_groups.all().delete() # type: ignore[attr-defined]
-        for g in groups:
-            if not isinstance(g, dict):
-                continue
-            name = (g.get("name") or "").strip()
-            if not name:
-                continue
-            ExperimentIngestGroup.objects.create(
-                ingest=obj,
-                name=name,
-                compound=(g.get("compound") or ""),
-                dosage=self._parse_decimal(g.get("dosage")),
-                unit=(g.get("unit") or ""),
-                wells=(g.get("wells") or ""),
-            )
+    #     obj.ingest_groups.all().delete() # type: ignore[attr-defined]
+    #     for g in groups:
+    #         if not isinstance(g, dict):
+    #             continue
+    #         name = (g.get("name") or "").strip()
+    #         if not name:
+    #             continue
+    #         ExperimentIngestGroup.objects.create(
+    #             ingest=obj,
+    #             name=name,
+    #             compound=(g.get("compound") or ""),
+    #             dosage=self._parse_decimal(g.get("dosage")),
+    #             unit=(g.get("unit") or ""),
+    #             wells=(g.get("wells") or ""),
+    #         )
 
 
 @admin.register(ExperimentFile)
@@ -661,6 +658,7 @@ class ConditionAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     search_fields = ("name", "chemical__name")
     list_select_related = ("experiment", "chemical", "unit")
     readonly_fields = ("created_at", "updated_at")
+    ordering = ("-is_control", "concentration", "name")
 
     @admin.display(description="Wells")
     def well_count(self, obj):
@@ -741,3 +739,5 @@ class NeuronalMetricsFrameAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     @admin.display(description="QC baseline")
     def qc_table(self, obj: NeuronalMetricsFrame) -> SafeString:
         return _render_qc_json_table(obj.qc_json)
+    ################
+    ################

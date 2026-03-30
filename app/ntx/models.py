@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING, Any
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
@@ -515,6 +516,36 @@ class ExperimentIngest(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"ExperimentIngest #{self.pk or 'new'} ({self.status})"
+    
+    def _parse_decimal(self, value):
+        if value in (None, ""):
+            return None
+        try:
+            return Decimal(str(value))
+        except (InvalidOperation, ValueError, TypeError):
+            return None
+
+    def sync_groups_from_layout(self) -> None:
+        groups = self.layout_groups or []
+        if not isinstance(groups, list):
+            return
+
+        self.ingest_groups.all().delete()
+
+        for g in groups:
+            if not isinstance(g, dict):
+                continue
+
+            ExperimentIngestGroup.objects.create(
+                ingest=self,
+                chemical=(g.get("chemical") or g.get("compound") or ""),
+                concentration=self._parse_decimal(
+                    g.get("concentration") if "concentration" in g else g.get("dosage")
+                ),
+                unit=(g.get("unit") or ""),
+                is_control=bool(g.get("is_control", False)),
+                wells=(g.get("wells") or ""),
+            )
 
     def parse_files(self) -> None:
         if not (self.layout_file and self.baseline_csv and self.exposure_csv):
@@ -525,31 +556,38 @@ class ExperimentIngest(TimeStampedModel):
                 self.populate_from_files()
                 self.status = self.Status.PARSED
                 self.error_message = ""
+            # except Exception as e:
+            #     self.status = self.Status.ERROR
+            #     self.error_message = str(e)
+
+                self.save(
+                    update_fields=[
+                        "status",
+                        "error_message",
+                        "code",
+                        "sex",
+                        "div",
+                        "chemical",
+                        "cell_line",
+                        "experimenter",
+                        "date",
+                        "plate_number",
+                        "layout_date",
+                        "layout_wells",
+                        "control_group",
+                        "layout_groups",
+                        "layout_input",
+                        "parsed_meta",
+                        "updated_at",
+                    ]
+                )
+                self.sync_groups_from_layout()
+
             except Exception as e:
                 self.status = self.Status.ERROR
                 self.error_message = str(e)
-
-            self.save(
-                update_fields=[
-                    "status",
-                    "error_message",
-                    "code",
-                    "sex",
-                    "div",
-                    "chemical",
-                    "cell_line",
-                    "experimenter",
-                    "date",
-                    "plate_number",
-                    "layout_date",
-                    "layout_wells",
-                    "control_group",
-                    "layout_groups",
-                    "layout_input",
-                    "parsed_meta",
-                    "updated_at",
-                ]
-            )
+                self.save(update_fields=["status", "error_message", "updated_at"])
+                raise
 
     def populate_from_files(self) -> None:
         """
@@ -641,6 +679,7 @@ class ExperimentIngest(TimeStampedModel):
             "exposure_filename_meta": merged.get("exposure_filename_meta"),
             "layout_meta": layout_meta,
         }
+
     def execute_ingest(self) -> Experiment:
         """
         Promote this parsed ingest to an Experiment.
@@ -651,53 +690,83 @@ class ExperimentIngest(TimeStampedModel):
         if not self.project_id:
             raise ValidationError({"project": "Project is required before promotion."})
 
-        with transaction.atomic():
-            if Experiment.objects.filter(code=self.code).exists():
-                raise ValidationError(
-                    {"code": f"Experiment with code '{self.code}' already exists."}
-                )
-
-            exp = Experiment.objects.create(
-                project=self.project,
-                code=self.code,
-                sex=self.sex,
-                date=self.date,
-                cell_line=self.cell_line,
-                researcher=self.experimenter,
-                status=ExperimentStatus.INGESTED,
-                parsed_at=timezone.now(),
-            )
-
-            for g in self.ingest_groups.all():
-                chemical, _ = Chemical.objects.get_or_create(
-                    name=g.compound or "Unknown",
-                    defaults={"slug": slugify(g.compound or "unknown")},
-                )
-
-                unit = None
-                if g.unit:
-                    unit, _ = ConcentrationUnit.objects.get_or_create(
-                        symbol=g.unit,
-                        defaults={"name": g.unit, "slug": slugify(g.unit)},
+        try:
+            with transaction.atomic():
+                if Experiment.objects.filter(code=self.code).exists():
+                    raise ValidationError(
+                        {"code": f"Experiment with code '{self.code}' already exists."}
                     )
 
-                wells = g.wells.split() if g.wells else []
-
-                Condition.objects.create(
-                    experiment=exp,
-                    name=g.name,
-                    chemical=chemical,
-                    concentration=g.dosage,
-                    unit=unit,
-                    wells=wells,
-                    is_control="control" in g.name.lower(),
+                exp = Experiment.objects.create(
+                    project=self.project,
+                    code=self.code,
+                    sex=self.sex,
+                    date=self.date,
+                    cell_line=self.cell_line,
+                    researcher=self.experimenter,
+                    status=ExperimentStatus.INGESTED,
+                    parsed_at=timezone.now(),
                 )
 
-            self.status = self.Status.INGESTED
-            self.error_message = ""
-            self.save(update_fields=["status", "error_message", "updated_at"])
+                all_wells: list[str] = []
+                condition_count = 0
 
-        return exp
+                for g in self.ingest_groups.all():
+                    chemical, _ = Chemical.objects.get_or_create(
+                        name=g.chemical or "Unknown",
+                        defaults={"slug": slugify(g.chemical or "unknown")},
+                    )
+
+                    unit = None
+                    if g.unit:
+                        unit, _ = ConcentrationUnit.objects.get_or_create(
+                            symbol=g.unit,
+                            defaults={"name": g.unit, "slug": slugify(g.unit)},
+                        )
+
+                    wells = g.wells.split() if g.wells else []
+
+                    if g.is_control:
+                        condition_name = "Control"
+                    elif g.concentration is not None:
+                        value_str = format(g.concentration.normalize(), "f")
+                        if "." in value_str:
+                            value_str = value_str.rstrip("0").rstrip(".")
+                        # value_str = (
+                        #     format(g.concentration.normalize(), "f").rstrip("0").rstrip(".") or "0"
+                        # )
+                        condition_name = f"{value_str} {g.unit}".strip()
+                    else:
+                        condition_name = g.chemical or "Unknown"
+
+                    Condition.objects.create(
+                        experiment=exp,
+                        name=condition_name,
+                        chemical=chemical,
+                        concentration=g.concentration,
+                        unit=unit,
+                        wells=wells,
+                        is_control=g.is_control,
+                    )
+
+                    all_wells.extend(wells)
+                    condition_count += 1
+
+                exp.well_count = len(set(all_wells))
+                exp.condition_count = condition_count
+                exp.save(update_fields=["well_count", "condition_count", "updated_at"])
+
+                self.status = self.Status.INGESTED
+                self.error_message = ""
+                self.save(update_fields=["status", "error_message", "updated_at"])
+
+            return exp
+
+        except Exception as e:
+            self.status = self.Status.ERROR
+            self.error_message = str(e)
+            self.save(update_fields=["status", "error_message", "updated_at"])
+            raise
 
 
 class ExperimentIngestGroup(TimeStampedModel):
@@ -706,24 +775,28 @@ class ExperimentIngestGroup(TimeStampedModel):
         on_delete=models.CASCADE,
         related_name="ingest_groups",
     )
-    name = models.CharField(max_length=255)
-    compound = models.CharField(max_length=255, blank=True, default="")
-    dosage = models.DecimalField(
+    # name = models.CharField(max_length=255)
+    chemical = models.CharField(max_length=255, blank=True, default="")
+    concentration = models.DecimalField(
         max_digits=12,
         decimal_places=6,
         null=True,
         blank=True,
     )
     unit = models.CharField(max_length=32, blank=True, default="")
+    is_control = models.BooleanField(default=False)
     wells = models.TextField(
         blank=True, default="", help_text="Space-separated wells, e.g. A1 A2 A3"
     )
 
     class Meta(TimeStampedModel.Meta):
-        ordering = ["name"]
-        constraints = [
-            models.UniqueConstraint(fields=["ingest", "name"], name="unique_ingest_group_name")
-        ]
+        # ordering = ["name"]
+        ordering = ["id"]
+        # constraints = [
+        #     models.UniqueConstraint(fields=["ingest", "name"], name="unique_ingest_group_name")
+        # ]
 
     def __str__(self) -> str:
-        return f"{self.ingest.code or self.ingest.pk}: {self.name}"
+        label = "Control" if self.is_control else (self.chemical or "Unknown")
+        return f"{self.ingest.code or self.ingest.pk}: {label}"
+        # return f"{self.ingest.code or self.ingest.pk}: {self.name}"

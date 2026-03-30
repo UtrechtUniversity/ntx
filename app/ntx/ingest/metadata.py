@@ -77,6 +77,7 @@ def collect_experiment_metadata_from_files(
                 "dosage": dosage,
                 "unit": cond.unit,
                 "wells": " ".join(cond.wells),
+                "is_control": cond.is_control,
             }
         )
 
