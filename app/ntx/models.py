@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Any
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
+from typing import TYPE_CHECKING, Any
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
@@ -560,10 +560,7 @@ class ExperimentIngest(TimeStampedModel):
                 self.populate_from_files()
                 self.status = self.Status.PARSED
                 self.error_message = ""
-            # except Exception as e:
-            #     self.status = self.Status.ERROR
-            #     self.error_message = str(e)
-
+    
                 self.save(
                     update_fields=[
                         "status",
@@ -738,9 +735,7 @@ class ExperimentIngest(TimeStampedModel):
                         value_str = format(g.concentration.normalize(), "f")
                         if "." in value_str:
                             value_str = value_str.rstrip("0").rstrip(".")
-                        # value_str = (
-                        #     format(g.concentration.normalize(), "f").rstrip("0").rstrip(".") or "0"
-                        # )
+
                         condition_name = f"{value_str} {g.unit}".strip()
                     else:
                         condition_name = g.chemical or "Unknown"
@@ -796,13 +791,8 @@ class ExperimentIngestGroup(TimeStampedModel):
     )
 
     class Meta(TimeStampedModel.Meta):
-        # ordering = ["name"]
         ordering = ["id"]
-        # constraints = [
-        #     models.UniqueConstraint(fields=["ingest", "name"], name="unique_ingest_group_name")
-        # ]
 
     def __str__(self) -> str:
         label = "Control" if self.is_control else (self.chemical or "Unknown")
         return f"{self.ingest.code or self.ingest.pk}: {label}"
-        # return f"{self.ingest.code or self.ingest.pk}: {self.name}"

@@ -1,27 +1,23 @@
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 from collections.abc import Sequence
 from datetime import datetime
-from typing import Any, cast
 from decimal import Decimal
-import json
+from typing import Any, cast
 
 from django import forms
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.db.models import Count
+from django.db.models import Count, F, Q
 from django.forms import Textarea
-from django.template.loader import render_to_string
-from django.utils.safestring import SafeString, mark_safe
-from django.db import transaction
-from django.contrib import messages
-from django.utils import timezone
-from django.utils.text import slugify
 from django.http import HttpResponse
-from django.db.models import F, Q
+from django.template.loader import render_to_string
+from django.utils import timezone
+from django.utils.safestring import SafeString, mark_safe
 
 from ntx.ingest.metadata import collect_experiment_metadata_from_files
 from ntx.yoda_export import experiment_to_yoda_payload
@@ -40,7 +36,6 @@ from .models import (
     NeuronalMetricsFrame,
     Project,
     Sex,
-    ExperimentStatus,
     _first_present,
 )
 
@@ -264,15 +259,18 @@ class ExperimentAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
 
         content = json.dumps(payload, indent=2, ensure_ascii=False)
         resp = HttpResponse(content, content_type="application/json; charset=utf-8")
-        resp["Content-Disposition"] = f'attachment; filename="yoda_experiments_{now:%Y%m%d_%H%M%S}.json"'
-        
+        resp["Content-Disposition"] = (
+            f'attachment; filename="yoda_experiments_{now:%Y%m%d_%H%M%S}.json"'
+        )
+       
         return resp
 
 
 class ExperimentIngestGroupForm(forms.ModelForm):
     class Meta:
         model = ExperimentIngestGroup
-        fields = "__all__"
+        # fields = "__all__"
+        fields = ["chemical", "concentration", "unit", "is_control", "wells"]
         widgets = {
             "chemical": forms.TextInput(
                 attrs={"size": 10, "style": "width: 10em;"}
@@ -311,8 +309,6 @@ class ExperimentIngestGroupInline(admin.TabularInline):
     model = ExperimentIngestGroup
     form = ExperimentIngestGroupForm
     extra = 0
-    # fields = ("compound", "dosage", "unit", "wells", "name")
-    # ordering = ("name",)
     fields = ("chemical", "concentration", "unit", "is_control", "wells")
     ordering = ("id",)
     formfield_overrides = {
@@ -554,15 +550,6 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
     )
     actions = ["promote_to_experiment"]
 
-    # def _parse_decimal(self, value):
-    #     if value in (None, ""):
-    #         return None
-    #     try:
-    #         d = Decimal(str(value))
-    #     except (InvalidOperation, ValueError, TypeError):
-    #         return None
-    #     return d.quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
-
     def get_fieldsets(self, request, obj=None):  # type: ignore[override]
         # obj is None → add view; obj is not None → change view
         return self.add_fieldsets if obj is None else self.change_fieldsets
@@ -629,34 +616,6 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
         if should_parse:
             obj.parse_files()
 
-    # def save_related(self, request, form, formsets, change):
-    #     super().save_related(request, form, formsets, change)
-
-    #     obj: ExperimentIngest = form.instance
-    #     if change:
-    #         return
-
-    #     groups = obj.layout_groups or []
-    #     if not isinstance(groups, list):
-    #         return
-
-    #     obj.ingest_groups.all().delete() # type: ignore[attr-defined]
-    #     for g in groups:
-    #         if not isinstance(g, dict):
-    #             continue
-    #         name = (g.get("name") or "").strip()
-    #         if not name:
-    #             continue
-    #         ExperimentIngestGroup.objects.create(
-    #             ingest=obj,
-    #             name=name,
-    #             compound=(g.get("compound") or ""),
-    #             dosage=self._parse_decimal(g.get("dosage")),
-    #             unit=(g.get("unit") or ""),
-    #             wells=(g.get("wells") or ""),
-    #         )
-
-
 @admin.register(ExperimentFile)
 class ExperimentFileAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     list_display = ("experiment", "kind", "div", "file")
@@ -677,7 +636,7 @@ class ConditionAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
         "well_count",
     )
     list_filter = ("is_control", "experiment__project")
-    search_fields = ("name", "chemical__name")
+    search_fields = ("name", "chemical__name", "experiment__code")
     list_select_related = ("experiment", "chemical", "unit")
     readonly_fields = ("created_at", "updated_at")
     ordering = ("-is_control", "concentration", "name")
@@ -772,5 +731,3 @@ class NeuronalMetricsFrameAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     @admin.display(description="QC baseline")
     def qc_table(self, obj: NeuronalMetricsFrame) -> SafeString:
         return _render_qc_json_table(obj.qc_json)
-    ################
-    ################
