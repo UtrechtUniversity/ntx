@@ -54,6 +54,10 @@ def project_report_api(request, slug: str):
     if parsed_params:
         params = parsed_params
 
+    # Extract x_axis and y_axis for scatter plot
+    x_axis = request.GET.get("x_axis", "").strip() or None
+    y_axis = request.GET.get("y_axis", "").strip() or None
+
     # Pass raw plot key through the builder registry (validated downstream).
     plot = request.GET.get("plot")
 
@@ -62,6 +66,8 @@ def project_report_api(request, slug: str):
             project,
             plot=plot,
             params=params,
+            x_axis=x_axis,
+            y_axis=y_axis,
         )
     except (AnalysisPipelineError, ValueError) as exc:
         return JsonResponse({"error": str(exc)}, status=400)

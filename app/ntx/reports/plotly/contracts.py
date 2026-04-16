@@ -45,3 +45,6 @@ class ProjectReportPayload(BaseModel):
     available_params: list[PlotlyParamOption] = Field(default_factory=list)
     default_selected_params: list[str] = Field(default_factory=list)
     selected_params: list[str] = Field(default_factory=list)
+    param_selection_mode: str | None = None
+    x_axis: str | None = None
+    y_axis: str | None = None

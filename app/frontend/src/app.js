@@ -29,6 +29,11 @@ function projectReport(options = {}) {
     availableParams: [], // Parameter options returned by the report API.
     defaultSelectedParams: [], // Backend-provided default parameter keys.
     selectedParams: [], // Active parameter keys used for rendering.
+    paramSelectionMode: "multiple", // Mode for parameter selection (multiple or xy_axes).
+    xAxis: "", // Selected X-axis parameter for scatter plot.
+    yAxis: "", // Selected Y-axis parameter for scatter plot.
+    xAxisSearch: "", // Search text for X-axis dropdown.
+    yAxisSearch: "", // Search text for Y-axis dropdown.
     cards: [], // Plot card data returned by the API.
     loading: false, // UI flag for showing the loading state.
     requestId: 0, // Counter for ignoring stale responses.
@@ -53,6 +58,35 @@ function projectReport(options = {}) {
         groupsBySection.get(section).params.push(param);
       }
       return Array.from(groupsBySection.values());
+    },
+
+    filteredXParams() {
+      if (this.xAxisSearch.length === 0) {
+        return [];
+      }
+      const search = this.xAxisSearch.toLowerCase();
+      return this.availableParams.filter(
+        (param) =>
+          param.label.toLowerCase().includes(search) ||
+          param.section.toLowerCase().includes(search)
+      );
+    },
+
+    filteredYParams() {
+      if (this.yAxisSearch.length === 0) {
+        return [];
+      }
+      const search = this.yAxisSearch.toLowerCase();
+      return this.availableParams.filter(
+        (param) =>
+          param.label.toLowerCase().includes(search) ||
+          param.section.toLowerCase().includes(search)
+      );
+    },
+
+    getParamLabel(key) {
+      const param = this.availableParams.find((p) => p.key === key);
+      return param ? param.label : key;
     },
 
     init() {
@@ -90,6 +124,22 @@ function projectReport(options = {}) {
         // Ensure the plot key is always valid for the selector + API.
         this.plot = this.plotOptions[0].value;
       }
+
+      // When plot changes, update the mode and clear cards and any errors
+      const activePlotOption = this.plotOptions.find((opt) => opt.value === this.plot);
+      if (activePlotOption) {
+        this.paramSelectionMode = activePlotOption.param_selection_mode || "multiple";
+        this.cards = []; // Clear previous plot cards
+        this.clearMessages();
+        
+        // For xy_axes mode, don't auto-load - wait for parameter selection
+        if (this.paramSelectionMode === "xy_axes") {
+          this.xAxis = "";
+          this.yAxis = "";
+          return true;
+        }
+      }
+
       return true;
     },
 
@@ -106,21 +156,43 @@ function projectReport(options = {}) {
     buildUrl() {
       // Build the report URL with selected plot + parameters.
       const url = new URL(this.apiUrl, window.location.origin);
-      if (this.selectedParams.length > 0) {
-        url.searchParams.set("params", this.selectedParams.join(","));
+      
+      if (this.paramSelectionMode === "xy_axes") {
+        // For scatter plot, use x_axis and y_axis parameters.
+        if (this.xAxis) {
+          url.searchParams.set("x_axis", this.xAxis);
+        }
+        if (this.yAxis) {
+          url.searchParams.set("y_axis", this.yAxis);
+        }
+      } else {
+        // For multiple selection mode, use params.
+        if (this.selectedParams.length > 0) {
+          url.searchParams.set("params", this.selectedParams.join(","));
+        }
       }
+      
       // Plot is required by the API, so always include a valid selection.
       url.searchParams.set("plot", this.plot);
       return url;
     },
 
     applyPayload(payload) {
-      // Backend declares available/default/selected params.
+      // Backend declares available/default/selected params and selection mode.
       this.availableParams = Array.isArray(payload.available_params) ? payload.available_params : [];
       this.defaultSelectedParams = Array.isArray(payload.default_selected_params)
         ? payload.default_selected_params
         : [];
       this.selectedParams = Array.isArray(payload.selected_params) ? payload.selected_params : [];
+      this.paramSelectionMode = payload.param_selection_mode || "multiple";
+      
+      // For xy_axes mode, store the selected axes from the response.
+      if (payload.x_axis) {
+        this.xAxis = payload.x_axis;
+      }
+      if (payload.y_axis) {
+        this.yAxis = payload.y_axis;
+      }
     },
 
     async load() {
@@ -192,6 +264,11 @@ function projectReport(options = {}) {
         this.setError("No plots available in the report payload.");
       }
       finish();
+    },
+
+    applyXYAxes() {
+      // Fetch scatter plot using the selected X and Y axis parameters.
+      this.load();
     },
   };
 }
