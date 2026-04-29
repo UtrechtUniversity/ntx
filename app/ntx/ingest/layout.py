@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, TypedDict
 
 from openpyxl import load_workbook
 
@@ -41,7 +41,13 @@ class ExperimentLayout:
     conditions: list[ConditionLayout]
 
 
-def parse_group_name(name: str) -> dict[str, object]:
+class GroupNameParts(TypedDict):
+    chemical: str | None
+    concentration: float | None
+    unit: str | None
+
+
+def parse_group_name(name: str) -> GroupNameParts:
     name = str(name).strip()
     parts = name.split()
     chemical, concentration, unit = None, None, None
@@ -116,17 +122,17 @@ def parse_layout_xlsx(path: str | Path) -> ExperimentLayout:
                 raise LayoutError(f"Condition '{key}' has no wells listed")
 
             legacy = parse_group_name(key)
-            concentration = legacy["concentration"]
+            raw_concentration = legacy["concentration"]
             chemical = legacy["chemical"]
             unit = legacy["unit"]
 
             is_control = any(k in lowered for k in ("control", "dmso"))
 
-            if concentration is None:
+            if raw_concentration is None:
                 concentration: Decimal | None = None
             else:
                 try:
-                    concentration = Decimal(str(concentration))
+                    concentration = Decimal(str(raw_concentration))
                 except Exception as exc:
                     raise LayoutError(f"Invalid concentration value '{key}'") from exc
 

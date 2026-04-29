@@ -10,6 +10,7 @@ from typing import Any, cast
 from django import forms
 from django.contrib import admin, messages
 from django.core.exceptions import ValidationError
+from django.core.files.uploadedfile import UploadedFile
 from django.db import models
 from django.db.models import Count
 from django.forms import Textarea
@@ -558,11 +559,17 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
                 should_parse = True
 
             if "layout_file" in request.FILES:
-                obj.original_layout_filename = request.FILES["layout_file"].name
+                obj.original_layout_filename = cast(
+                    UploadedFile, request.FILES["layout_file"]
+                ).name
             if "baseline_csv" in request.FILES:
-                obj.original_baseline_filename = request.FILES["baseline_csv"].name
+                obj.original_baseline_filename = cast(
+                    UploadedFile, request.FILES["baseline_csv"]
+                ).name
             if "exposure_csv" in request.FILES:
-                obj.original_exposure_filename = request.FILES["exposure_csv"].name
+                obj.original_exposure_filename = cast(
+                    UploadedFile, request.FILES["exposure_csv"]
+                ).name
 
         else:
             if obj.status == ExperimentIngest.Status.PENDING:

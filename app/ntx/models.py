@@ -465,6 +465,10 @@ def _first_present(d: dict[str, Any], *keys: str) -> str | None:
 
 
 class ExperimentIngest(TimeStampedModel):
+    if TYPE_CHECKING:
+        project_id: int
+        ingest_groups: models.Manager["ExperimentIngestGroup"]
+
     class Status(models.TextChoices):
         PENDING = "PENDING", "Pending"
         PARSED = "PARSED", "Parsed"
