@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import os
 import tempfile
 from collections.abc import Sequence
@@ -12,15 +11,12 @@ from django import forms
 from django.contrib import admin, messages
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.db.models import Count, F, Q
+from django.db.models import Count
 from django.forms import Textarea
-from django.http import HttpResponse
 from django.template.loader import render_to_string
-from django.utils import timezone
 from django.utils.safestring import SafeString, mark_safe
 
 from ntx.ingest.metadata import collect_experiment_metadata_from_files
-from ntx.yoda_export import experiment_to_yoda_payload
 
 from .metrics_metadata import METRIC_SECTIONS
 from .metrics_schema import MetricsPayload
@@ -232,38 +228,11 @@ class ExperimentAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
         "condition_count",
         "well_count",
         "parsed_at",
-        "yoda_exported_at",
     )
     list_filter = ("status", "sex", "project")
     search_fields = ("code", "researcher", "cell_line", "manufacturer")
     list_select_related = ("project",)
 
-    actions = ["download_new_yoda_json"]
-    readonly_fields = ("yoda_exported_at",)
-
-    @admin.action(description="Download metadata in JSON for Yoda")
-    def download_new_yoda_json(self, request, queryset):
-        # Only export experiments that are new or updated since last export
-        qs = (
-            queryset
-            .filter(Q(yoda_exported_at__isnull=True) | Q(updated_at__gt=F("yoda_exported_at")))
-            .select_related("project")
-            .prefetch_related("conditions", "conditions__chemical", "conditions__unit")
-        )
-
-        payload = [experiment_to_yoda_payload(exp) for exp in qs]
-
-        # Mark exported
-        now = timezone.now()
-        qs.update(yoda_exported_at=now)
-
-        content = json.dumps(payload, indent=2, ensure_ascii=False)
-        resp = HttpResponse(content, content_type="application/json; charset=utf-8")
-        resp["Content-Disposition"] = (
-            f'attachment; filename="yoda_experiments_{now:%Y%m%d_%H%M%S}.json"'
-        )
-       
-        return resp
 
 
 class ExperimentIngestGroupForm(forms.ModelForm):

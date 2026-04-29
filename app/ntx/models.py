@@ -268,7 +268,6 @@ class Experiment(TimeStampedModel):
     status = models.CharField(
         max_length=16, choices=ExperimentStatus.choices, default=ExperimentStatus.CREATED
     )
-    yoda_exported_at = models.DateTimeField(null=True, blank=True, db_index=True)
 
     class Meta(TimeStampedModel.Meta):
         ordering = ["-date", "code"]
