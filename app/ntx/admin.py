@@ -118,6 +118,7 @@ def _render_qc_json_table(qc_json: object) -> SafeString:
     rows = [cast(list[Numeric], qc[param]) for param in params]
     return _render_metrics_table(params=params, wells=wells, rows=rows, is_ratio=False)
 
+
 class ReadOnlyAdminMixin:
     """
     Disable editing in the admin for ingestion-backed models.
@@ -234,16 +235,13 @@ class ExperimentAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     list_select_related = ("project",)
 
 
-
 class ExperimentIngestGroupForm(forms.ModelForm):
     class Meta:
         model = ExperimentIngestGroup
         # fields = "__all__"
         fields = ["chemical", "concentration", "unit", "is_control", "wells"]
         widgets = {
-            "chemical": forms.TextInput(
-                attrs={"size": 10, "style": "width: 10em;"}
-            ),
+            "chemical": forms.TextInput(attrs={"size": 10, "style": "width: 10em;"}),
             "concentration": forms.TextInput(
                 attrs={
                     "size": 10,
@@ -256,7 +254,6 @@ class ExperimentIngestGroupForm(forms.ModelForm):
                     "style": "width: 5em;",
                 }
             ),
-            
         }
 
     def __init__(self, *args, **kwargs):
@@ -484,14 +481,7 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
     add_fieldsets = (
         (
             "Uploads",
-            {
-                "fields": (
-                    "project",
-                    "layout_file",
-                    "baseline_csv",
-                    "exposure_csv"
-                )
-            },
+            {"fields": ("project", "layout_file", "baseline_csv", "exposure_csv")},
         ),
     )
 
@@ -523,12 +513,11 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
         # obj is None → add view; obj is not None → change view
         return self.add_fieldsets if obj is None else self.change_fieldsets
 
-
     def get_inlines(self, request, obj=None):
         if obj is None:
             return ()
         return (ExperimentIngestGroupInline,)
-    
+
     @admin.action(description="Promote selected ingests to Experiments")
     def promote_to_experiment(self, request, queryset):
         created = 0
@@ -550,7 +539,6 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
             f"{created} experiments created, {skipped} skipped.",
             level=messages.SUCCESS,
         )
- 
 
     def save_model(self, request, obj, form, change):
         """
@@ -584,6 +572,7 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
 
         if should_parse:
             obj.parse_files()
+
 
 @admin.register(ExperimentFile)
 class ExperimentFileAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
@@ -619,7 +608,6 @@ class ConditionAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
         if "." in value_str:
             value_str = value_str.rstrip("0").rstrip(".")
         return value_str or "0"
-
 
     @admin.display(description="Wells")
     def well_count(self, obj):

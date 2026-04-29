@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import date, datetime, timedelta
 import logging
 import re
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Iterable
@@ -31,7 +31,7 @@ class ConditionLayout:
     wells: list[str]
     is_control: bool
     chemical: str | None = None
-    unit: str | None = None 
+    unit: str | None = None
 
 
 @dataclass
@@ -67,7 +67,7 @@ def parse_group_name(name: str) -> dict[str, object]:
         for i, part in enumerate(reversed(parts)):
             if part.replace(".", "", 1).isdigit():
                 concentration = float(part)
-                chemical = " ".join(parts[:-(i + 1)]) if (i + 1) < len(parts) else None
+                chemical = " ".join(parts[: -(i + 1)]) if (i + 1) < len(parts) else None
                 break
 
     if chemical is None and concentration is None:
@@ -156,6 +156,7 @@ def parse_layout_xlsx(path: str | Path) -> ExperimentLayout:
         plate_wells=plate_wells,
         conditions=conditions,
     )
+
 
 def _parse_date(value, path: Path) -> date:
     if value is None:
@@ -260,6 +261,4 @@ def _validate_wells(conditions: Iterable[ConditionLayout], plate_wells: int) -> 
                 f"Layout lists {len(seen)} wells exceeding plate capacity {max_supported}"
             )
     elif len(seen) > plate_wells:
-        raise LayoutError(
-            f"Layout lists {len(seen)} wells exceeding plate capacity {plate_wells}"
-        )
+        raise LayoutError(f"Layout lists {len(seen)} wells exceeding plate capacity {plate_wells}")

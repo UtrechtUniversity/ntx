@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import logging
+import re
 from pathlib import Path
 from typing import Any, Dict
-import re
-import logging
 
 from .discovery import parse_filename_metadata
 from .layout import parse_layout_xlsx
@@ -100,18 +100,13 @@ def collect_experiment_metadata_from_files(
     merged: dict[str, Any] = {
         "experiment_id": normalized_code,
         "code": normalized_code,
-
         "sex": merged_meta.sex,
-
         "div": f"DIV {merged_meta.div}" if merged_meta.div is not None else None,
-
         "compound": merged_meta.chemical,
         "type_of_cells": merged_meta.cell_line,
         "experimenter": merged_meta.raw.get("mea:experimenter"),
         "plate_number": merged_meta.raw.get("mea:plate_number"),
-
         "date": layout.date.isoformat(),
-
         "layout_meta": layout_meta,
         "baseline_filename_meta": baseline_meta.raw,
         "exposure_filename_meta": exposure_meta.raw,

@@ -519,7 +519,7 @@ class ExperimentIngest(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"ExperimentIngest #{self.pk or 'new'} ({self.status})"
-    
+
     def _parse_decimal(self, value):
         if value in (None, ""):
             return None
@@ -559,7 +559,7 @@ class ExperimentIngest(TimeStampedModel):
                 self.populate_from_files()
                 self.status = self.Status.PARSED
                 self.error_message = ""
-    
+
                 self.save(
                     update_fields=[
                         "status",
