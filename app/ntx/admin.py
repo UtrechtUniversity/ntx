@@ -1,28 +1,18 @@
 from __future__ import annotations
 
-import os
-import tempfile
 from collections.abc import Sequence
-from datetime import datetime
-from decimal import Decimal
 from typing import Any, cast
 
-from django import forms
 from django.contrib import admin, messages
 from django.core.exceptions import ValidationError
-from django.core.files.uploadedfile import UploadedFile
 from django.db import models
 from django.db.models import Count
-from django.forms import Textarea
 from django.template.loader import render_to_string
 from django.utils.safestring import SafeString, mark_safe
-
-from ntx.ingest.metadata import collect_experiment_metadata_from_files
 
 from .metrics_metadata import METRIC_SECTIONS
 from .metrics_schema import MetricsPayload
 from .models import (
-    DIV_NUM_RE,
     Chemical,
     ConcentrationUnit,
     Condition,
@@ -32,8 +22,6 @@ from .models import (
     ExperimentIngestGroup,
     NeuronalMetricsFrame,
     Project,
-    Sex,
-    _first_present,
 )
 
 Numeric = float | int | None
@@ -236,234 +224,15 @@ class ExperimentAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     list_select_related = ("project",)
 
 
-class ExperimentIngestGroupForm(forms.ModelForm):
-    class Meta:
-        model = ExperimentIngestGroup
-        # fields = "__all__"
-        fields = ["chemical", "concentration", "unit", "is_control", "wells"]
-        widgets = {
-            "chemical": forms.TextInput(attrs={"size": 10, "style": "width: 10em;"}),
-            "concentration": forms.TextInput(
-                attrs={
-                    "size": 10,
-                    "style": "width: 5em;",
-                }
-            ),
-            "unit": forms.TextInput(
-                attrs={
-                    "size": 10,
-                    "style": "width: 5em;",
-                }
-            ),
-        }
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        value = getattr(self.instance, "concentration", None)
-        if value is not None and "concentration" in self.fields:
-            try:
-                dec = value if isinstance(value, Decimal) else Decimal(str(value))
-                value_str = format(dec.normalize(), "f")
-                if "." in value_str:
-                    value_str = value_str.rstrip("0").rstrip(".")
-                self.initial["concentration"] = value_str or "0"
-            except Exception:
-                self.initial["concentration"] = value
-
-
 class ExperimentIngestGroupInline(admin.TabularInline):
     model = ExperimentIngestGroup
-    form = ExperimentIngestGroupForm
     extra = 0
     fields = ("chemical", "concentration", "unit", "is_control", "wells")
     ordering = ("id",)
-    formfield_overrides = {
-        models.TextField: {
-            "widget": Textarea(attrs={"rows": 2, "cols": 25, "style": "resize: horizontal;"})
-        }
-    }
-
-
-class ExperimentIngestAdminForm(forms.ModelForm):
-    class Meta:
-        model = ExperimentIngest
-        fields = [
-            "project",
-            "status",
-            "submission_method",
-            "layout_file",
-            "baseline_csv",
-            "exposure_csv",
-            "code",
-            "sex",
-            "div",
-            "chemical",
-            "cell_line",
-            "experimenter",
-            "date",
-            "plate_number",
-            "layout_date",
-            "layout_wells",
-            "control_group",
-            "layout_groups",
-            "layout_input",
-            "parsed_meta",
-        ]
-
-    def clean(self):
-        """
-        On ADD:
-        - Parse the uploaded files using temp copies that preserve original filenames.
-        - Extract the experiment code.
-        - If no code: show an error.
-        - If duplicate in ExperimentIngest or Experiment: show an error.
-        On CHANGE:
-        - Skip parsing.
-        """
-        cleaned_data = super().clean() or {}
-
-        # Only run this extra validation on ADD
-        if self.instance.pk:
-            return cleaned_data
-
-        layout_file = cleaned_data.get("layout_file")
-        baseline_csv = cleaned_data.get("baseline_csv")
-        exposure_csv = cleaned_data.get("exposure_csv")
-
-        if not (layout_file and baseline_csv and exposure_csv):
-            return cleaned_data
-
-        tmp_dir = tempfile.mkdtemp()
-
-        def _write_with_original_name(uploaded):
-            dst_path = os.path.join(tmp_dir, uploaded.name)
-            with open(dst_path, "wb+") as f:
-                for chunk in uploaded.chunks():
-                    f.write(chunk)
-            return dst_path
-
-        layout_path = _write_with_original_name(layout_file)
-        baseline_path = _write_with_original_name(baseline_csv)
-        exposure_path = _write_with_original_name(exposure_csv)
-
-        merged = collect_experiment_metadata_from_files(
-            layout_file=layout_path,
-            baseline_file=baseline_path,
-            exposure_file=exposure_path,
-        )
-
-        code = _first_present(
-            merged,
-            "experiment_id",
-            "code",
-            "experiment",
-            "experiment_code",
-            "experimentId",
-            "ExperimentID",
-        )
-        if not code:
-            code = _first_present(
-                merged.get("baseline_filename_meta") or {}, "experiment_id", "code"
-            )
-        if not code:
-            code = _first_present(
-                merged.get("exposure_filename_meta") or {}, "experiment_id", "code"
-            )
-
-        if not code:
-            raise ValidationError(
-                {"layout_file": "Could not extract experiment_id (code) from the uploaded files."}
-            )
-
-        ingest_exists = ExperimentIngest.objects.filter(code=code).exists()
-        experiment_exists = Experiment.objects.filter(code=code).exists()
-
-        if ingest_exists or experiment_exists:
-            raise ValidationError(
-                {
-                    "layout_file": (
-                        f"Experiment with code '{code}' already exists in the dataset; "
-                        "re-upload is not allowed."
-                    )
-                }
-            )
-
-        sex_token = (merged.get("sex") or "").lower()
-        if "female" in sex_token:
-            sex = Sex.FEMALE
-        elif "male" in sex_token:
-            sex = Sex.MALE
-        else:
-            sex = Sex.UNKNOWN
-
-        div = None
-        div_token = merged.get("div")
-        if isinstance(div_token, str):
-            m = DIV_NUM_RE.search(div_token)
-            if m:
-                try:
-                    div = int(m.group(1))
-                except ValueError:
-                    div = None
-
-        chemical = merged.get("compound") or ""
-        cell_line = merged.get("type_of_cells") or ""
-        experimenter = merged.get("experimenter") or ""
-        plate_number = merged.get("plate_number") or ""
-
-        date = None
-        date_str = merged.get("date")
-        if isinstance(date_str, str) and date_str:
-            try:
-                date = datetime.fromisoformat(date_str).date()
-            except Exception:
-                date = None
-
-        cleaned_data.update(
-            {
-                "code": code,
-                "sex": sex,
-                "div": div,
-                "chemical": chemical,
-                "cell_line": cell_line,
-                "experimenter": experimenter,
-                "date": date,
-                "plate_number": plate_number,
-            }
-        )
-
-        self.instance.code = code
-        self.instance.sex = sex
-        self.instance.div = div
-        self.instance.chemical = chemical
-        self.instance.cell_line = cell_line
-        self.instance.experimenter = experimenter
-        self.instance.date = date
-        self.instance.plate_number = plate_number
-
-        return cleaned_data
-
-    def clean_code(self):
-        """
-        Prevent accidentally clearing `code` on existing records.
-        - On ADD: we allow blank (it will be set by populate_from_files / clean()).
-        - On CHANGE: if the field is left empty, keep the existing value.
-        """
-        code = (self.cleaned_data.get("code") or "").strip() or None
-
-        if self.instance.pk:
-            if code is None and self.instance.code:
-                return self.instance.code
-            return code
-
-        return code
 
 
 @admin.register(ExperimentIngest)
 class ExperimentIngestAdmin(admin.ModelAdmin):
-    form = ExperimentIngestAdminForm
-    exclude = ("layout_groups",)
     list_display = (
         "id",
         "status",
@@ -477,7 +246,7 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
     )
     list_filter = ("project", "status", "submission_method", "sex")
     search_fields = ("code", "chemical", "cell_line", "experimenter")
-    readonly_fields = ("error_message", "created_at", "updated_at")
+    readonly_fields = ("status", "error_message", "created_at", "updated_at")
 
     add_fieldsets = (
         (
@@ -503,12 +272,13 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
                     "experimenter",
                     "date",
                     "plate_number",
+                    "exposure_type",
                 ),
             },
         ),
-        ("Layout summary (editable)", {"fields": ("layout_date", "layout_wells", "control_group")}),
+        ("Layout summary (editable)", {"fields": ("layout_date", "layout_wells")}),
     )
-    actions = ["promote_to_experiment"]
+    actions = ["parse_selected_uploads", "promote_to_experiment"]
 
     def get_fieldsets(self, request, obj=None):  # type: ignore[override]
         # obj is None → add view; obj is not None → change view
@@ -518,6 +288,24 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
         if obj is None:
             return ()
         return (ExperimentIngestGroupInline,)
+
+    @admin.action(description="Parse/reparse selected uploads")
+    def parse_selected_uploads(self, request, queryset):
+        parsed = 0
+        failed = 0
+
+        for ingest in queryset:
+            try:
+                ingest.parse_files()
+                parsed += 1
+            except Exception:
+                failed += 1
+
+        self.message_user(
+            request,
+            f"{parsed} uploads parsed, {failed} failed.",
+            level=messages.SUCCESS if not failed else messages.WARNING,
+        )
 
     @admin.action(description="Promote selected ingests to Experiments")
     def promote_to_experiment(self, request, queryset):
@@ -545,35 +333,16 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
         """
         Control when parsing happens:
 
-        - ADD view:
-            * "_continue" (Save and continue editing)  -> parse now
-            * "_save" or "_addanother"                -> don't parse yet
-        - CHANGE view:
-            * if status == PENDING                    -> parse now on any save
-            * otherwise                               -> don't re-parse
+        - ADD view: save uploaded files, then parse once.
+        - CHANGE view: reparse only when one of the uploaded files changes.
         """
-        should_parse = False
+        upload_fields = {"layout_file", "baseline_csv", "exposure_csv"}
+        should_parse = not change or any(field in request.FILES for field in upload_fields)
 
-        if not change:
-            if "_continue" in request.POST:
-                should_parse = True
-
-            if "layout_file" in request.FILES:
-                obj.original_layout_filename = cast(
-                    UploadedFile, request.FILES["layout_file"]
-                ).name
-            if "baseline_csv" in request.FILES:
-                obj.original_baseline_filename = cast(
-                    UploadedFile, request.FILES["baseline_csv"]
-                ).name
-            if "exposure_csv" in request.FILES:
-                obj.original_exposure_filename = cast(
-                    UploadedFile, request.FILES["exposure_csv"]
-                ).name
-
-        else:
-            if obj.status == ExperimentIngest.Status.PENDING:
-                should_parse = True
+        if "baseline_csv" in request.FILES:
+            obj.original_baseline_filename = request.FILES["baseline_csv"].name
+        if "exposure_csv" in request.FILES:
+            obj.original_exposure_filename = request.FILES["exposure_csv"].name
 
         super().save_model(request, obj, form, change)
 

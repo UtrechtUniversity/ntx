@@ -1,23 +1,19 @@
 from __future__ import annotations
 
 import logging
-import re
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict
 
-from .discovery import parse_filename_metadata
-from .layout import parse_layout_xlsx
+from .discovery import FilenameMetadata, parse_filename_metadata
+from .layout import ExperimentLayout, parse_layout_xlsx
 
 logger = logging.getLogger(__name__)
 
 
-def _normalize_code(raw_code: str | None) -> str | None:
-    if raw_code is None:
-        return None
-    matches = re.findall(r"(?<!\d)(\d{6})(?!\d)", raw_code)
-    if matches:
-        return matches[-1]
-    return raw_code
+@dataclass(frozen=True)
+class ParsedExperimentUpload:
+    metadata: FilenameMetadata
+    layout: ExperimentLayout
 
 
 def collect_experiment_metadata_from_files(
@@ -27,17 +23,12 @@ def collect_experiment_metadata_from_files(
     exposure_file: str | Path,
     baseline_filename: str | None = None,
     exposure_filename: str | None = None,
-) -> Dict[str, Any]:
+) -> ParsedExperimentUpload:
     """
-    Returns a dict with metadata extracted from filenames and layout files.
+    Parse uploaded experiment files into the canonical typed ingestion DTOs.
 
-    - Parses filenames via ntx.ingest.discovery.parse_filename_metadata
-      (baseline + exposure, then merged).
-    - Parses layout via ntx.ingest.layout.parse_layout_xlsx.
-    - Builds a merged dict that admin/models expect, with keys:
-        experiment_id, code, sex, div, compound, type_of_cells,
-        experimenter, plate_number, date, layout_meta,
-        baseline_filename_meta, exposure_filename_meta.
+    Uploaded files are stored under generated storage names, so callers can
+    provide the original baseline/exposure filenames for metadata parsing.
     """
 
     layout_path = Path(layout_file)
@@ -51,68 +42,19 @@ def collect_experiment_metadata_from_files(
     if not exposure_path.exists():
         raise FileNotFoundError(f"Exposure file not found: {exposure_path}")
 
-    # 1) Filename metadata
     baseline_meta = parse_filename_metadata(baseline_filename or baseline_path)
     exposure_meta = parse_filename_metadata(exposure_filename or exposure_path)
-    merged_meta = baseline_meta.merge(exposure_meta)
 
-    # 2) Layout metadata
-    layout = parse_layout_xlsx(layout_path)
-
-    # Build layout_meta
-    groups: list[dict[str, Any]] = []
-    control_group_name: str | None = None
-
-    for cond in layout.conditions:
-        dosage = float(cond.concentration) if cond.concentration is not None else None
-        if cond.is_control:
-            name = "Control"
-            control_group_name = name
-            # dosage = None
-        else:
-            name = f"{dosage}" if dosage is not None else ""
-
-        groups.append(
-            {
-                "name": name,
-                "compound": merged_meta.chemical or cond.chemical or "",
-                "dosage": dosage,
-                "unit": cond.unit,
-                "wells": " ".join(cond.wells),
-                "is_control": cond.is_control,
-            }
+    if baseline_meta.code != exposure_meta.code:
+        raise ValueError(
+            "Baseline and exposure filenames do not match "
+            f"({baseline_meta.code} vs {exposure_meta.code})"
         )
 
-    layout_meta: dict[str, Any] = {
-        "date": layout.date.isoformat(),
-        "wells": layout.plate_wells,
-        "control_group": control_group_name or "",
-        "groups": groups,
-    }
+    merged_meta = baseline_meta.merge(exposure_meta)
+    layout = parse_layout_xlsx(layout_path)
 
-    experiment_number = merged_meta.raw.get("mea:experiment_number")
-
-    if experiment_number:
-        normalized_code = experiment_number
-    else:
-        normalized_code = _normalize_code(merged_meta.code)
-
-    merged: dict[str, Any] = {
-        "experiment_id": normalized_code,
-        "code": normalized_code,
-        "sex": merged_meta.sex,
-        "div": f"DIV {merged_meta.div}" if merged_meta.div is not None else None,
-        "compound": merged_meta.chemical,
-        "type_of_cells": merged_meta.cell_line,
-        "experimenter": merged_meta.raw.get("mea:experimenter"),
-        "plate_number": merged_meta.raw.get("mea:plate_number"),
-        "date": layout.date.isoformat(),
-        "layout_meta": layout_meta,
-        "baseline_filename_meta": baseline_meta.raw,
-        "exposure_filename_meta": exposure_meta.raw,
-    }
-
-    if not merged.get("compound"):
+    if not merged_meta.chemical:
         logger.warning("Compound could not be determined from either layout or filenames.")
 
-    return merged
+    return ParsedExperimentUpload(metadata=merged_meta, layout=layout)

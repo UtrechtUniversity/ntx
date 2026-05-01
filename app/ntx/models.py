@@ -1,16 +1,13 @@
 from __future__ import annotations
 
-from pathlib import Path
 import re
-from datetime import datetime
-from decimal import Decimal, InvalidOperation
-from typing import TYPE_CHECKING, Any
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
 from django.db.models import Q
-from django.utils import timezone
 from django.utils.text import slugify
 from pydantic import ValidationError as PydanticValidationError
 from pydantic_core import ErrorDetails
@@ -26,7 +23,6 @@ from .utils import sanitize_numeric_json
 User = get_user_model()
 
 WELL_RE = re.compile(r"^[A-Za-z](\d+)$")
-DIV_NUM_RE = re.compile(r"DIV\s*(\d+)", re.IGNORECASE)
 
 
 def _normalize_well(well: str) -> str:
@@ -455,14 +451,6 @@ class NeuronalMetricsFrame(TimeStampedModel):
             )
 
 
-def _first_present(d: dict[str, Any], *keys: str) -> str | None:
-    for k in keys:
-        v = d.get(k)
-        if isinstance(v, str) and v.strip():
-            return v.strip()
-    return None
-
-
 class ExperimentIngest(TimeStampedModel):
     if TYPE_CHECKING:
         project_id: int
@@ -507,6 +495,7 @@ class ExperimentIngest(TimeStampedModel):
     experimenter = models.CharField(max_length=255, blank=True, default="")
     date = models.DateField(null=True, blank=True)
     plate_number = models.CharField(max_length=64, blank=True, default="")
+    exposure_type = models.CharField(max_length=64, blank=True, default="")
 
     layout_date = models.DateField(null=True, blank=True)
     layout_wells = models.PositiveIntegerField(null=True, blank=True)
@@ -523,43 +512,13 @@ class ExperimentIngest(TimeStampedModel):
     def __str__(self) -> str:
         return f"ExperimentIngest #{self.pk or 'new'} ({self.status})"
 
-    def _parse_decimal(self, value):
-        if value in (None, ""):
-            return None
-        try:
-            return Decimal(str(value))
-        except (InvalidOperation, ValueError, TypeError):
-            return None
-
-    def sync_groups_from_layout(self) -> None:
-        groups = self.layout_groups or []
-        if not isinstance(groups, list):
-            return
-
-        self.ingest_groups.all().delete()
-
-        for g in groups:
-            if not isinstance(g, dict):
-                continue
-
-            ExperimentIngestGroup.objects.create(
-                ingest=self,
-                chemical=(g.get("chemical") or g.get("compound") or ""),
-                concentration=self._parse_decimal(
-                    g.get("concentration") if "concentration" in g else g.get("dosage")
-                ),
-                unit=(g.get("unit") or ""),
-                is_control=bool(g.get("is_control", False)),
-                wells=(g.get("wells") or ""),
-            )
-
     def parse_files(self) -> None:
         if not (self.layout_file and self.baseline_csv and self.exposure_csv):
             raise ValidationError({"layout_file": "All three files must be uploaded."})
 
-        with transaction.atomic():
-            try:
-                self.populate_from_files()
+        try:
+            with transaction.atomic():
+                layout = self.populate_from_files()
                 self.status = self.Status.PARSED
                 self.error_message = ""
 
@@ -575,166 +534,121 @@ class ExperimentIngest(TimeStampedModel):
                         "experimenter",
                         "date",
                         "plate_number",
+                        "exposure_type",
                         "layout_date",
                         "layout_wells",
-                        "control_group",
-                        "layout_groups",
-                        "layout_input",
-                        "parsed_meta",
                         "updated_at",
                     ]
                 )
-                self.sync_groups_from_layout()
+                self.sync_groups_from_layout(layout)
 
-            except Exception as e:
-                self.status = self.Status.ERROR
-                self.error_message = str(e)
-                self.save(update_fields=["status", "error_message", "updated_at"])
-                raise
+        except Exception as e:
+            self.status = self.Status.ERROR
+            self.error_message = str(e)
+            self.save(update_fields=["status", "error_message", "updated_at"])
+            raise
 
-    def populate_from_files(self) -> None:
+    def populate_from_files(self) -> ExperimentLayout:
         """
         Parse layout + filenames and populate staging fields.
-        Uses actual stored file paths (so original filenames are preserved).
+        Uses original upload names for filename parsing because storage may rename files.
         """
         if not (self.layout_file and self.baseline_csv and self.exposure_csv):
             raise ValidationError({"layout_file": "All three files must be uploaded."})
 
-        merged = collect_experiment_metadata_from_files(
+        parsed = collect_experiment_metadata_from_files(
             layout_file=self.layout_file.path,
             baseline_file=self.baseline_csv.path,
             exposure_file=self.exposure_csv.path,
             baseline_filename=self.original_baseline_filename or None,
             exposure_filename=self.original_exposure_filename or None,
         )
+        metadata = parsed.metadata
+        layout = parsed.layout
 
-        code = _first_present(
-            merged,
-            "experiment_id",
-            "code",
-            "experiment",
-            "experiment_code",
-            "experimentId",
-            "ExperimentID",
-        )
-
-        if not code:
+        if not metadata.code:
             raise ValidationError(
                 {"layout_file": "Could not extract experiment_id (code) from the uploaded files."}
             )
 
-        self.code = code
+        self.code = metadata.code
 
-        sex_token = (merged.get("sex") or "").lower()
+        sex_token = (metadata.sex or "").lower()
         if "female" in sex_token:
             self.sex = Sex.FEMALE
         elif "male" in sex_token:
             self.sex = Sex.MALE
+        elif "mixed" in sex_token:
+            self.sex = Sex.MIXED
         else:
             self.sex = Sex.UNKNOWN
 
-        div_token = merged.get("div")
-        if isinstance(div_token, str):
-            m = DIV_NUM_RE.search(div_token)
-            self.div = int(m.group(1)) if m else None
-        else:
-            self.div = None
+        self.div = metadata.div
 
-        self.chemical = merged.get("compound") or ""
-        self.cell_line = merged.get("type_of_cells") or ""
-        self.experimenter = merged.get("experimenter") or ""
-        self.plate_number = merged.get("plate_number") or ""
+        self.chemical = metadata.chemical or ""
+        self.cell_line = metadata.cell_line or ""
+        self.experimenter = metadata.raw.get("mea:experimenter") or ""
+        self.plate_number = metadata.raw.get("mea:plate_number") or ""
+        self.exposure_type = metadata.raw.get("mea:type_of_exposure") or ""
+        self.date = layout.date
+        self.layout_date = layout.date
+        self.layout_wells = layout.plate_wells
+        return layout
 
-        date_str = merged.get("date")
-        if isinstance(date_str, str) and date_str:
-            try:
-                self.date = datetime.fromisoformat(date_str).date()
+    def sync_groups_from_layout(self, layout: ExperimentLayout) -> None:
+        self.ingest_groups.all().delete()
 
-            except Exception:
-                self.date = None
-        else:
-            self.date = None
+        for condition in layout.conditions:
+            ExperimentIngestGroup.objects.create(
+                ingest=self,
+                chemical=condition.chemical or "",
+                concentration=condition.concentration,
+                unit=condition.unit or "",
+                is_control=condition.is_control,
+                wells=" ".join(condition.wells),
+            )
 
-        layout_meta: dict[str, Any] = merged.get("layout_meta") or {}
-        self.layout_input = layout_meta
-
-        layout_date_str = layout_meta.get("date")
-        if isinstance(layout_date_str, str) and layout_date_str:
-            try:
-                self.layout_date = datetime.fromisoformat(layout_date_str).date()
-
-            except Exception:
-                self.layout_date = None
-        else:
-            self.layout_date = None
-
-        wells_val = layout_meta.get("wells")
-        try:
-            self.layout_wells = int(wells_val) if wells_val is not None else None
-        except Exception:
-            self.layout_wells = None
-
-        self.control_group = layout_meta.get("control_group") or ""
-
-        groups_list = layout_meta.get("groups") or []
-        self.layout_groups = groups_list if isinstance(groups_list, list) else []
-
-        self.parsed_meta = {
-            "baseline_filename_meta": merged.get("baseline_filename_meta"),
-            "exposure_filename_meta": merged.get("exposure_filename_meta"),
-            "layout_meta": layout_meta,
-        }
-
-    def _build_filename_metadata(self) -> FilenameMetadata:
+    def _to_filename_metadata(self) -> FilenameMetadata:
         if not self.code:
             raise ValidationError({"code": "Experiment code is required before promotion."})
 
-        parsed_meta = self.parsed_meta if isinstance(self.parsed_meta, dict) else {}
-        baseline_raw = parsed_meta.get("baseline_filename_meta")
-        exposure_raw = parsed_meta.get("exposure_filename_meta")
-
-        raw: dict[str, str | None] = {}
-        if isinstance(exposure_raw, dict):
-            raw.update({str(key): value for key, value in exposure_raw.items()})
-        if isinstance(baseline_raw, dict):
-            raw.update({str(key): value for key, value in baseline_raw.items()})
-
-        raw["mea:experimenter"] = self.experimenter or None
-        raw["mea:plate_number"] = self.plate_number or None
-        raw["mea:type_of_cells"] = self.cell_line or None
-        raw["mea:compound"] = self.chemical or None
-        raw["mea:sex"] = {
-            Sex.FEMALE: "female",
-            Sex.MALE: "male",
-            Sex.MIXED: "mixed",
-        }.get(self.sex)
-        raw["mea:div"] = f"DIV {self.div}" if self.div is not None else None
-
-        extra_tokens = []
-        extra_tokens_raw = raw.get("mea:extra_tokens")
-        if isinstance(extra_tokens_raw, str) and extra_tokens_raw:
-            extra_tokens = [token for token in extra_tokens_raw.split("_") if token]
-
-        measurement = raw.get("mea:baseline_exposure")
+        raw: dict[str, str | None] = {
+            "mea:date": self.date.isoformat() if self.date else None,
+            "mea:experimenter": self.experimenter or None,
+            "mea:plate_number": self.plate_number or None,
+            "mea:type_of_cells": self.cell_line or None,
+            "mea:type_of_exposure": self.exposure_type or None,
+            "mea:compound": self.chemical or None,
+            "mea:sex": {
+                Sex.FEMALE: "female",
+                Sex.MALE: "male",
+                Sex.MIXED: "mixed",
+            }.get(self.sex),
+            "mea:div": f"DIV {self.div}" if self.div is not None else None,
+            "mea:baseline_exposure": None,
+            "mea:extra_tokens": None,
+        }
 
         return FilenameMetadata(
             code=self.code,
             chemical=self.chemical or None,
-            sex=raw["mea:sex"],
+            sex=raw.get("mea:sex"),
             div=self.div,
             cell_line=self.cell_line or None,
-            measurement=measurement,
+            measurement=None,
             raw=raw,
-            extra_tokens=extra_tokens,
+            extra_tokens=[],
         )
 
-    def _build_experiment_layout(self) -> ExperimentLayout:
+    def _to_experiment_layout(self) -> ExperimentLayout:
         experiment_date = self.layout_date or self.date
         if experiment_date is None:
             raise ValidationError({"layout_date": "Layout date is required before promotion."})
 
         if self.layout_wells is None:
-            raise ValidationError({"layout_wells": "Layout well count is required before promotion."})
+            raise ValidationError(
+                {"layout_wells": "Layout well count is required before promotion."}
+            )
         if self.layout_wells <= 0:
             raise ValidationError({"layout_wells": "Layout well count must be positive."})
 
@@ -778,15 +692,19 @@ class ExperimentIngest(TimeStampedModel):
             conditions=conditions,
         )
 
-    def _default_unit_symbol(self, layout: ExperimentLayout) -> str | None:
-        unit_symbols = {
-            condition.unit.strip()
-            for condition in layout.conditions
-            if isinstance(condition.unit, str) and condition.unit.strip()
-        }
-        if len(unit_symbols) == 1:
-            return next(iter(unit_symbols))
-        return None
+    def _to_experiment_folder(self, metadata: FilenameMetadata) -> ExperimentFolder:
+        return ExperimentFolder(
+            path=Path(self.layout_file.path).parent,
+            layout_file=Path(self.layout_file.path),
+            baseline_csv=Path(self.baseline_csv.path),
+            exposure_csv=Path(self.exposure_csv.path),
+            metadata=metadata,
+        )
+
+    def _to_ingestion_inputs(self) -> tuple[ExperimentFolder, ExperimentLayout]:
+        metadata = self._to_filename_metadata()
+        layout = self._to_experiment_layout()
+        return self._to_experiment_folder(metadata), layout
 
     def execute_ingest(self) -> Experiment:
         """
@@ -798,28 +716,21 @@ class ExperimentIngest(TimeStampedModel):
         if not self.project_id:
             raise ValidationError({"project": "Project is required before promotion."})
 
-        metadata = self._build_filename_metadata()
-        layout = self._build_experiment_layout()
-        default_unit_symbol = self._default_unit_symbol(layout)
-        folder = ExperimentFolder(
-            path=Path(self.layout_file.path).parent,
-            layout_file=Path(self.layout_file.path),
-            baseline_csv=Path(self.baseline_csv.path),
-            exposure_csv=Path(self.exposure_csv.path),
-            metadata=metadata,
-        )
+        folder, layout = self._to_ingestion_inputs()
         from ntx.ingest.service import IngestionError, create_experiment_from_files
 
         try:
             if Experiment.objects.filter(code=self.code).exists():
-                raise ValidationError({"code": f"Experiment with code '{self.code}' already exists."})
+                raise ValidationError(
+                    {"code": f"Experiment with code '{self.code}' already exists."}
+                )
 
             experiment = create_experiment_from_files(
                 folder,
                 project=self.project,
                 layout=layout,
                 overwrite=False,
-                default_unit_symbol=default_unit_symbol,
+                default_unit_symbol=None,
             )
         except IngestionError as exc:
             self.status = self.Status.ERROR
