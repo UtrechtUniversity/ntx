@@ -243,7 +243,7 @@ class Experiment(TimeStampedModel):
         neuronal_metrics_frames: models.Manager["NeuronalMetricsFrame"]
 
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="experiments")
-    code = models.CharField(max_length=128, blank=True, null=True, unique=True)
+    code = models.CharField(max_length=128, blank=False, null=False, unique=True)
     sex = models.CharField(max_length=1, choices=Sex.choices, default=Sex.UNKNOWN)
     researcher = models.CharField(max_length=255, blank=True)
     date = models.DateField(null=True, blank=True)
@@ -272,11 +272,6 @@ class Experiment(TimeStampedModel):
     class Meta(TimeStampedModel.Meta):
         ordering = ["-date", "code"]
         indexes = [models.Index(fields=["project", "date"], name="experiment_project_date_idx")]
-        constraints = [
-            models.UniqueConstraint(
-                fields=["project", "code"], name="experiment_project_code_unique"
-            )
-        ]
 
     def __str__(self) -> str:
         return f"{self.project}: {self.code}"

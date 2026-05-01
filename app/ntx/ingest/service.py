@@ -72,7 +72,7 @@ def create_experiment_from_files(
     project = project or _get_default_project()
 
     with transaction.atomic():
-        existing = Experiment.objects.filter(project=project, code=metadata.code).first()
+        existing = Experiment.objects.filter(code=metadata.code).first()
         if existing:
             if not overwrite:
                 experiment = existing
