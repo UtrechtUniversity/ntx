@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 import re
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
@@ -14,7 +15,10 @@ from django.utils.text import slugify
 from pydantic import ValidationError as PydanticValidationError
 from pydantic_core import ErrorDetails
 
+from ntx.ingest.discovery import ExperimentFolder, FilenameMetadata
+from ntx.ingest.layout import ConditionLayout, ExperimentLayout
 from ntx.ingest.metadata import collect_experiment_metadata_from_files
+from ntx.ingest.wells import parse_well_string
 
 from .metrics_schema import MetricsPayload, MetricsQcPayload
 from .utils import sanitize_numeric_json
@@ -681,6 +685,109 @@ class ExperimentIngest(TimeStampedModel):
             "layout_meta": layout_meta,
         }
 
+    def _build_filename_metadata(self) -> FilenameMetadata:
+        if not self.code:
+            raise ValidationError({"code": "Experiment code is required before promotion."})
+
+        parsed_meta = self.parsed_meta if isinstance(self.parsed_meta, dict) else {}
+        baseline_raw = parsed_meta.get("baseline_filename_meta")
+        exposure_raw = parsed_meta.get("exposure_filename_meta")
+
+        raw: dict[str, str | None] = {}
+        if isinstance(exposure_raw, dict):
+            raw.update({str(key): value for key, value in exposure_raw.items()})
+        if isinstance(baseline_raw, dict):
+            raw.update({str(key): value for key, value in baseline_raw.items()})
+
+        raw["mea:experimenter"] = self.experimenter or None
+        raw["mea:plate_number"] = self.plate_number or None
+        raw["mea:type_of_cells"] = self.cell_line or None
+        raw["mea:compound"] = self.chemical or None
+        raw["mea:sex"] = {
+            Sex.FEMALE: "female",
+            Sex.MALE: "male",
+            Sex.MIXED: "mixed",
+        }.get(self.sex)
+        raw["mea:div"] = f"DIV {self.div}" if self.div is not None else None
+
+        extra_tokens = []
+        extra_tokens_raw = raw.get("mea:extra_tokens")
+        if isinstance(extra_tokens_raw, str) and extra_tokens_raw:
+            extra_tokens = [token for token in extra_tokens_raw.split("_") if token]
+
+        measurement = raw.get("mea:baseline_exposure")
+
+        return FilenameMetadata(
+            code=self.code,
+            chemical=self.chemical or None,
+            sex=raw["mea:sex"],
+            div=self.div,
+            cell_line=self.cell_line or None,
+            measurement=measurement,
+            raw=raw,
+            extra_tokens=extra_tokens,
+        )
+
+    def _build_experiment_layout(self) -> ExperimentLayout:
+        experiment_date = self.layout_date or self.date
+        if experiment_date is None:
+            raise ValidationError({"layout_date": "Layout date is required before promotion."})
+
+        if self.layout_wells is None:
+            raise ValidationError({"layout_wells": "Layout well count is required before promotion."})
+        if self.layout_wells <= 0:
+            raise ValidationError({"layout_wells": "Layout well count must be positive."})
+
+        conditions: list[ConditionLayout] = []
+        seen_wells: set[str] = set()
+
+        for group in self.ingest_groups.all():
+            try:
+                wells = parse_well_string(group.wells) if group.wells else []
+            except ValueError as exc:
+                raise ValidationError({"layout_groups": str(exc)}) from exc
+
+            if not wells:
+                raise ValidationError({"layout_groups": "Each staged group must define wells."})
+
+            for well in wells:
+                if well in seen_wells:
+                    raise ValidationError(
+                        {"layout_groups": f"Duplicate well '{well}' assigned across staged groups."}
+                    )
+                seen_wells.add(well)
+
+            conditions.append(
+                ConditionLayout(
+                    concentration=group.concentration,
+                    wells=wells,
+                    is_control=group.is_control,
+                    chemical=group.chemical or None,
+                    unit=group.unit or None,
+                )
+            )
+
+        if not conditions:
+            raise ValidationError({"layout_groups": "At least one staged group is required."})
+        if not any(condition.is_control for condition in conditions):
+            raise ValidationError({"layout_groups": "At least one control group is required."})
+
+        return ExperimentLayout(
+            date=experiment_date,
+            plate_wells=self.layout_wells,
+            conditions=conditions,
+        )
+
+    def _default_unit_symbol(self, layout: ExperimentLayout) -> str | None:
+        unit_symbols = {
+            condition.unit.strip()
+            for condition in layout.conditions
+            if isinstance(condition.unit, str) and condition.unit.strip()
+        }
+        if len(unit_symbols) == 1:
+            return next(iter(unit_symbols))
+        return None
+
     def execute_ingest(self) -> Experiment:
         """
         Promote this parsed ingest to an Experiment.
@@ -691,81 +798,45 @@ class ExperimentIngest(TimeStampedModel):
         if not self.project_id:
             raise ValidationError({"project": "Project is required before promotion."})
 
+        metadata = self._build_filename_metadata()
+        layout = self._build_experiment_layout()
+        default_unit_symbol = self._default_unit_symbol(layout)
+        folder = ExperimentFolder(
+            path=Path(self.layout_file.path).parent,
+            layout_file=Path(self.layout_file.path),
+            baseline_csv=Path(self.baseline_csv.path),
+            exposure_csv=Path(self.exposure_csv.path),
+            metadata=metadata,
+        )
+        from ntx.ingest.service import IngestionError, create_experiment_from_files
+
         try:
-            with transaction.atomic():
-                if Experiment.objects.filter(code=self.code).exists():
-                    raise ValidationError(
-                        {"code": f"Experiment with code '{self.code}' already exists."}
-                    )
+            if Experiment.objects.filter(code=self.code).exists():
+                raise ValidationError({"code": f"Experiment with code '{self.code}' already exists."})
 
-                exp = Experiment.objects.create(
-                    project=self.project,
-                    code=self.code,
-                    sex=self.sex,
-                    date=self.date,
-                    cell_line=self.cell_line,
-                    researcher=self.experimenter,
-                    status=ExperimentStatus.INGESTED,
-                    parsed_at=timezone.now(),
-                )
-
-                all_wells: list[str] = []
-                condition_count = 0
-
-                for g in self.ingest_groups.all():
-                    chemical, _ = Chemical.objects.get_or_create(
-                        name=g.chemical or "Unknown",
-                        defaults={"slug": slugify(g.chemical or "unknown")},
-                    )
-
-                    unit = None
-                    if g.unit:
-                        unit, _ = ConcentrationUnit.objects.get_or_create(
-                            symbol=g.unit,
-                            defaults={"name": g.unit, "slug": slugify(g.unit)},
-                        )
-
-                    wells = g.wells.split() if g.wells else []
-
-                    if g.is_control:
-                        condition_name = "Control"
-                    elif g.concentration is not None:
-                        value_str = format(g.concentration.normalize(), "f")
-                        if "." in value_str:
-                            value_str = value_str.rstrip("0").rstrip(".")
-
-                        condition_name = f"{value_str} {g.unit}".strip()
-                    else:
-                        condition_name = g.chemical or "Unknown"
-
-                    Condition.objects.create(
-                        experiment=exp,
-                        name=condition_name,
-                        chemical=chemical,
-                        concentration=g.concentration,
-                        unit=unit,
-                        wells=wells,
-                        is_control=g.is_control,
-                    )
-
-                    all_wells.extend(wells)
-                    condition_count += 1
-
-                exp.well_count = len(set(all_wells))
-                exp.condition_count = condition_count
-                exp.save(update_fields=["well_count", "condition_count", "updated_at"])
-
-                self.status = self.Status.INGESTED
-                self.error_message = ""
-                self.save(update_fields=["status", "error_message", "updated_at"])
-
-            return exp
+            experiment = create_experiment_from_files(
+                folder,
+                project=self.project,
+                layout=layout,
+                overwrite=False,
+                default_unit_symbol=default_unit_symbol,
+            )
+        except IngestionError as exc:
+            self.status = self.Status.ERROR
+            self.error_message = str(exc)
+            self.save(update_fields=["status", "error_message", "updated_at"])
+            raise ValidationError(str(exc)) from exc
 
         except Exception as e:
             self.status = self.Status.ERROR
             self.error_message = str(e)
             self.save(update_fields=["status", "error_message", "updated_at"])
             raise
+
+        self.status = self.Status.INGESTED
+        self.error_message = ""
+        self.save(update_fields=["status", "error_message", "updated_at"])
+        return experiment
 
 
 class ExperimentIngestGroup(TimeStampedModel):

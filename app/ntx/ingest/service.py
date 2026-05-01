@@ -57,7 +57,7 @@ def create_experiment_from_files(
     chemical: Chemical | None = None,
     control_chemical: Chemical | None = None,
     concentration_unit: ConcentrationUnit | None = None,
-    default_unit_symbol: str = "uM",
+    default_unit_symbol: str | None = "uM",
     overwrite: bool = False,
     allow_missing_mask_metrics: bool = False,
     layout: ExperimentLayout | None = None,
@@ -261,17 +261,22 @@ def _create_conditions_and_layout(
     all_wells: list[str] = []
 
     for cond_layout in layout.conditions:
-        name = _format_condition_name(cond_layout, unit)
+        condition_unit = _resolve_condition_unit(cond_layout, unit)
+        name = _format_condition_name(cond_layout, condition_unit)
         if prefix:
             name = f"{prefix}{name}"
 
-        condition_chemical = control_chemical if cond_layout.is_control else exposure_chemical
+        condition_chemical = _resolve_condition_chemical(
+            cond_layout,
+            exposure_chemical=exposure_chemical,
+            control_chemical=control_chemical,
+        )
         condition = Condition(
             experiment=experiment,
             name=name,
             chemical=condition_chemical,
             concentration=cond_layout.concentration,
-            unit=unit,
+            unit=condition_unit,
             is_control=cond_layout.is_control,
             wells=_sort_wells(cond_layout.wells),
         )
@@ -282,6 +287,29 @@ def _create_conditions_and_layout(
 
     wells = _sort_wells(all_wells)
     return conditions, wells
+
+
+def _resolve_condition_chemical(
+    cond_layout,
+    *,
+    exposure_chemical: Chemical,
+    control_chemical: Chemical,
+) -> Chemical:
+    chemical_name = (cond_layout.chemical or "").strip()
+    if cond_layout.is_control and chemical_name.lower() == "control":
+        chemical_name = ""
+    if chemical_name:
+        return _get_or_create_chemical(chemical_name)
+    return control_chemical if cond_layout.is_control else exposure_chemical
+
+
+def _resolve_condition_unit(
+    cond_layout, default_unit: ConcentrationUnit | None
+) -> ConcentrationUnit | None:
+    unit_symbol = (cond_layout.unit or "").strip()
+    if unit_symbol:
+        return _get_or_create_unit(unit_symbol)
+    return default_unit
 
 
 def _process_metrics(
