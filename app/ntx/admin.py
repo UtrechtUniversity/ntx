@@ -322,6 +322,7 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
     def _promote_to_experiment(self, request, queryset, *, replace_existing: bool):
         created = 0
         skipped = 0
+        failed = 0
 
         for ingest in queryset:
             if ingest.status != ExperimentIngest.Status.PARSED:
@@ -332,12 +333,13 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
                 ingest.execute_ingest(replace_existing=replace_existing)
                 created += 1
             except ValidationError:
-                skipped += 1
+                failed += 1
 
+        level = messages.SUCCESS if failed == 0 else messages.WARNING
         self.message_user(
             request,
-            f"{created} experiments created, {skipped} skipped.",
-            level=messages.SUCCESS,
+            f"{created} experiments created, {failed} failed, {skipped} skipped.",
+            level=level,
         )
 
     def save_model(self, request, obj, form, change):

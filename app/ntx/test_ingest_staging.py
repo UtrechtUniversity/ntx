@@ -1,0 +1,115 @@
+from __future__ import annotations
+
+from datetime import date
+from decimal import Decimal
+from pathlib import Path
+
+import pytest
+from django.contrib import messages
+from django.contrib.admin.sites import AdminSite
+from django.core.exceptions import ValidationError
+from django.test import RequestFactory
+
+from .admin import ExperimentIngestAdmin
+from .ingest.discovery import discover_experiment_files
+from .models import Experiment, ExperimentIngest, ExperimentIngestGroup, Project
+
+pytestmark = pytest.mark.django_db
+
+
+def _stored_name(path: Path, media_root: Path) -> str:
+    return str(path.relative_to(media_root))
+
+
+def _create_invalid_parsed_ingest(
+    *,
+    stored_data_dir: Path,
+    media_root: Path,
+    code: str = "STAGED-INVALID",
+) -> ExperimentIngest:
+    folder = discover_experiment_files(stored_data_dir)
+    project = Project.objects.get(slug="default-project")
+
+    ingest = ExperimentIngest.objects.create(
+        project=project,
+        status=ExperimentIngest.Status.PARSED,
+        layout_file=_stored_name(folder.layout_file, media_root),
+        baseline_csv=_stored_name(folder.baseline_csv, media_root),
+        exposure_csv=_stored_name(folder.exposure_csv, media_root),
+        code=code,
+        div=folder.metadata.div if folder.metadata else 10,
+        chemical=folder.metadata.chemical if folder.metadata else "Lindane",
+        cell_line=folder.metadata.cell_line if folder.metadata else "rcortex",
+        date=date(2020, 10, 12),
+        layout_date=date(2020, 10, 12),
+        layout_wells=48,
+    )
+    ExperimentIngestGroup.objects.create(
+        ingest=ingest,
+        chemical="Control",
+        is_control=True,
+        wells="A1",
+    )
+    ExperimentIngestGroup.objects.create(
+        ingest=ingest,
+        chemical="Lindane",
+        concentration=Decimal("0.1"),
+        unit="uM",
+        is_control=False,
+        wells="A1",
+    )
+    return ingest
+
+
+def test_execute_ingest_marks_staged_validation_failure_as_error(
+    stored_data_dir: Path,
+    media_root: Path,
+):
+    ingest = _create_invalid_parsed_ingest(
+        stored_data_dir=stored_data_dir,
+        media_root=media_root,
+    )
+
+    with pytest.raises(ValidationError):
+        ingest.execute_ingest()
+
+    ingest.refresh_from_db()
+    assert ingest.status == ExperimentIngest.Status.ERROR
+    assert "Duplicate well 'A1'" in ingest.error_message
+    assert not Experiment.objects.filter(code=ingest.code).exists()
+
+
+def test_admin_promotion_reports_attempted_failures_separately(
+    stored_data_dir: Path,
+    media_root: Path,
+):
+    failed_ingest = _create_invalid_parsed_ingest(
+        stored_data_dir=stored_data_dir,
+        media_root=media_root,
+    )
+    skipped_ingest = _create_invalid_parsed_ingest(
+        stored_data_dir=stored_data_dir,
+        media_root=media_root,
+        code="STAGED-SKIPPED",
+    )
+    skipped_ingest.status = ExperimentIngest.Status.PENDING
+    skipped_ingest.save(update_fields=["status", "updated_at"])
+
+    request = RequestFactory().post("/admin/ntx/experimentingest/")
+    model_admin = ExperimentIngestAdmin(ExperimentIngest, AdminSite())
+    captured: list[tuple[str, int]] = []
+
+    def capture_message(request, message, level=messages.INFO, **kwargs):
+        captured.append((message, level))
+
+    model_admin.message_user = capture_message
+
+    model_admin._promote_to_experiment(
+        request,
+        ExperimentIngest.objects.filter(pk__in=[failed_ingest.pk, skipped_ingest.pk]),
+        replace_existing=False,
+    )
+
+    failed_ingest.refresh_from_db()
+    assert failed_ingest.status == ExperimentIngest.Status.ERROR
+    assert captured == [("0 experiments created, 1 failed, 1 skipped.", messages.WARNING)]

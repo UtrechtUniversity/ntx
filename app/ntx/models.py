@@ -706,6 +706,11 @@ class ExperimentIngest(TimeStampedModel):
         layout = self._to_experiment_layout()
         return self._to_experiment_folder(metadata), layout
 
+    def _mark_error(self, message: str) -> None:
+        self.status = self.Status.ERROR
+        self.error_message = message
+        self.save(update_fields=["status", "error_message", "updated_at"])
+
     def execute_ingest(self, *, replace_existing: bool = False) -> Experiment:
         """
         Promote this parsed ingest to an Experiment.
@@ -713,13 +718,13 @@ class ExperimentIngest(TimeStampedModel):
         if self.status != self.Status.PARSED:
             raise ValidationError("Only parsed ingests can be promoted to Experiment.")
 
-        if not self.project_id:
-            raise ValidationError({"project": "Project is required before promotion."})
-
-        folder, layout = self._to_ingestion_inputs()
         from ntx.ingest.service import IngestionError, create_experiment_from_files
 
         try:
+            if not self.project_id:
+                raise ValidationError({"project": "Project is required before promotion."})
+
+            folder, layout = self._to_ingestion_inputs()
             experiment = create_experiment_from_files(
                 folder,
                 project=self.project,
@@ -727,16 +732,15 @@ class ExperimentIngest(TimeStampedModel):
                 replace_existing=replace_existing,
                 default_unit_symbol=None,
             )
+        except ValidationError as exc:
+            self._mark_error(_format_validation_error(exc))
+            raise
         except IngestionError as exc:
-            self.status = self.Status.ERROR
-            self.error_message = str(exc)
-            self.save(update_fields=["status", "error_message", "updated_at"])
+            self._mark_error(str(exc))
             raise ValidationError(str(exc)) from exc
 
         except Exception as e:
-            self.status = self.Status.ERROR
-            self.error_message = str(e)
-            self.save(update_fields=["status", "error_message", "updated_at"])
+            self._mark_error(str(e))
             raise
 
         self.status = self.Status.INGESTED
@@ -771,3 +775,26 @@ class ExperimentIngestGroup(TimeStampedModel):
     def __str__(self) -> str:
         label = "Control" if self.is_control else (self.chemical or "Unknown")
         return f"{self.ingest.code or self.ingest.pk}: {label}"
+
+
+def _format_validation_error(exc: ValidationError) -> str:
+    try:
+        message_dict = exc.message_dict
+    except AttributeError:
+        message_dict = None
+
+    if message_dict:
+        parts = []
+        for field, messages in message_dict.items():
+            if isinstance(messages, (list, tuple)):
+                text = "; ".join(str(message) for message in messages)
+            else:
+                text = str(messages)
+            parts.append(f"{field}: {text}")
+        return "; ".join(parts)
+
+    messages = getattr(exc, "messages", None)
+    if messages:
+        return "; ".join(str(message) for message in messages)
+
+    return str(exc)
