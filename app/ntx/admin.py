@@ -278,7 +278,11 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
         ),
         ("Layout summary (editable)", {"fields": ("layout_date", "layout_wells")}),
     )
-    actions = ["parse_selected_uploads", "promote_to_experiment"]
+    actions = [
+        "parse_selected_uploads",
+        "promote_to_experiment",
+        "promote_to_experiment_replacing_existing",
+    ]
 
     def get_fieldsets(self, request, obj=None):  # type: ignore[override]
         # obj is None → add view; obj is not None → change view
@@ -309,6 +313,13 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
 
     @admin.action(description="Promote selected ingests to Experiments")
     def promote_to_experiment(self, request, queryset):
+        self._promote_to_experiment(request, queryset, replace_existing=False)
+
+    @admin.action(description="Promote selected ingests, replacing existing Experiments")
+    def promote_to_experiment_replacing_existing(self, request, queryset):
+        self._promote_to_experiment(request, queryset, replace_existing=True)
+
+    def _promote_to_experiment(self, request, queryset, *, replace_existing: bool):
         created = 0
         skipped = 0
 
@@ -318,7 +329,7 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
                 continue
 
             try:
-                ingest.execute_ingest()
+                ingest.execute_ingest(replace_existing=replace_existing)
                 created += 1
             except ValidationError:
                 skipped += 1

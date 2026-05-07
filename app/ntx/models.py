@@ -706,7 +706,7 @@ class ExperimentIngest(TimeStampedModel):
         layout = self._to_experiment_layout()
         return self._to_experiment_folder(metadata), layout
 
-    def execute_ingest(self) -> Experiment:
+    def execute_ingest(self, *, replace_existing: bool = False) -> Experiment:
         """
         Promote this parsed ingest to an Experiment.
         """
@@ -720,16 +720,11 @@ class ExperimentIngest(TimeStampedModel):
         from ntx.ingest.service import IngestionError, create_experiment_from_files
 
         try:
-            if Experiment.objects.filter(code=self.code).exists():
-                raise ValidationError(
-                    {"code": f"Experiment with code '{self.code}' already exists."}
-                )
-
             experiment = create_experiment_from_files(
                 folder,
                 project=self.project,
                 layout=layout,
-                overwrite=False,
+                replace_existing=replace_existing,
                 default_unit_symbol=None,
             )
         except IngestionError as exc:

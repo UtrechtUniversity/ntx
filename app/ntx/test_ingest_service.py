@@ -122,19 +122,30 @@ def test_create_experiment_from_real_folder(stored_data_dir: Path):
 def test_create_experiment_allows_control_chemical_override(stored_data_dir: Path):
     folder = discover_experiment_files(stored_data_dir)
     water, _ = Chemical.objects.get_or_create(name="Water")
-    experiment = create_experiment_from_files(folder, control_chemical=water, overwrite=True)
+    experiment = create_experiment_from_files(folder, control_chemical=water)
 
     control_condition = Condition.objects.get(experiment=experiment, is_control=True)
     assert control_condition.chemical == water
 
 
-def test_overwrite_existing_experiment(stored_data_dir: Path):
+def test_existing_experiment_fails_without_replace_existing(stored_data_dir: Path):
+    folder = discover_experiment_files(stored_data_dir)
+    original = create_experiment_from_files(folder)
+
+    with pytest.raises(IngestionError) as excinfo:
+        create_experiment_from_files(folder)
+
+    assert original.code in str(excinfo.value)
+    assert Experiment.objects.filter(id=original.id).exists()
+    assert Experiment.objects.filter(code=original.code).count() == 1
+
+
+def test_replace_existing_experiment(stored_data_dir: Path):
     folder = discover_experiment_files(stored_data_dir)
     first = create_experiment_from_files(folder)
     first_id = first.id
 
-    # Re-import with overwrite should replace the existing experiment (same code).
-    second = create_experiment_from_files(folder, overwrite=True)
+    second = create_experiment_from_files(folder, replace_existing=True)
     assert first_id != second.id
     assert not Experiment.objects.filter(id=first_id).exists()
     assert Experiment.objects.filter(project=second.project, code=second.code).count() == 1
@@ -145,14 +156,14 @@ def test_overwrite_existing_experiment(stored_data_dir: Path):
 
 def test_ratio_contains_values_for_common_metric(stored_data_dir: Path):
     folder = discover_experiment_files(stored_data_dir)
-    experiment = create_experiment_from_files(folder, overwrite=True)
+    experiment = create_experiment_from_files(folder)
     payload = experiment.neuronal_metrics_frames.get(div=0).metrics_json
     burst_idx = payload["params"].index("burst_frequency")
     ratio_row = payload["ratio"][burst_idx]
     assert sum(1 for value in ratio_row if value not in (None, -1)) > (experiment.well_count / 2)
 
 
-def test_overwrite_rolls_back_on_failure(stored_data_dir: Path, media_root: Path):
+def test_replace_existing_rolls_back_on_failure(stored_data_dir: Path, media_root: Path):
     folder = discover_experiment_files(stored_data_dir)
     original = create_experiment_from_files(folder)
     original_id = original.id
@@ -174,7 +185,7 @@ def test_overwrite_rolls_back_on_failure(stored_data_dir: Path, media_root: Path
     )
 
     with pytest.raises(ValueError):
-        create_experiment_from_files(bad_folder, overwrite=True)
+        create_experiment_from_files(bad_folder, replace_existing=True)
 
     assert Experiment.objects.filter(id=original_id).exists()
     assert NeuronalMetricsFrame.objects.filter(experiment_id=original_id).exists()
@@ -206,7 +217,7 @@ def test_ingest_fails_on_missing_wells(stored_data_dir: Path, media_root: Path):
 
     before_count = Experiment.objects.count()
     with pytest.raises(IngestionError) as excinfo:
-        create_experiment_from_files(bad_folder, overwrite=True)
+        create_experiment_from_files(bad_folder)
     assert missing_well in str(excinfo.value)
     assert Experiment.objects.count() == before_count
 
@@ -237,7 +248,7 @@ def test_ingest_succeeds_with_extra_csv_wells(stored_data_dir: Path, media_root:
     )
 
     # Should succeed
-    experiment = create_experiment_from_files(new_folder, overwrite=True)
+    experiment = create_experiment_from_files(new_folder)
     assert experiment.status == ExperimentStatus.INGESTED
     # Ensure well count matches LAYOUT, not CSV
     assert experiment.well_count == len(layout_wells)
@@ -269,7 +280,7 @@ def test_ingest_fails_when_mask_metrics_missing(stored_data_dir: Path, media_roo
 
     before_count = Experiment.objects.count()
     with pytest.raises(IngestionError):
-        create_experiment_from_files(bad_folder, overwrite=True)
+        create_experiment_from_files(bad_folder)
     assert Experiment.objects.count() == before_count
 
 
@@ -306,7 +317,7 @@ def test_ingest_lenient_missing_mask_metrics_marks_inactive(
     )
 
     experiment = create_experiment_from_files(
-        bad_folder, overwrite=True, allow_missing_mask_metrics=True
+        bad_folder, allow_missing_mask_metrics=True
     )
     qc_json = experiment.neuronal_metrics_frames.get(div=0).qc_json
     assert all(value == 0 for value in qc_json["number_of_active_electrodes"])
@@ -346,5 +357,5 @@ def test_ingest_strict_missing_per_well_mask_metrics_raises(
 
     before_count = Experiment.objects.count()
     with pytest.raises(IngestionError):
-        create_experiment_from_files(bad_folder, overwrite=True)
+        create_experiment_from_files(bad_folder)
     assert Experiment.objects.count() == before_count

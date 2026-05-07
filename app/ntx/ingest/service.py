@@ -58,7 +58,7 @@ def create_experiment_from_files(
     control_chemical: Chemical | None = None,
     concentration_unit: ConcentrationUnit | None = None,
     default_unit_symbol: str | None = "uM",
-    overwrite: bool = False,
+    replace_existing: bool = False,
     allow_missing_mask_metrics: bool = False,
     layout: ExperimentLayout | None = None,
 ) -> Experiment:
@@ -74,41 +74,29 @@ def create_experiment_from_files(
     with transaction.atomic():
         existing = Experiment.objects.filter(code=metadata.code).first()
         if existing:
-            if not overwrite:
-                experiment = existing
-            else:
-                _delete_existing_experiment(existing)
-                experiment = None
-        else:
-            experiment = None
+            if not replace_existing:
+                raise IngestionError(
+                    f"Experiment with code '{metadata.code}' already exists. "
+                    "Use replace_existing=True to replace it."
+                )
+            _delete_existing_experiment(existing)
 
         exposure_chemical = chemical or _get_or_create_chemical(metadata.chemical or "Unknown")
         resolved_control_chemical = control_chemical or _get_or_create_chemical("DMSO")
         unit_obj = concentration_unit or _get_or_create_unit(default_unit_symbol)
 
-        if experiment is None:
-            experiment = _create_experiment(project, metadata, layout, unit_obj)
-            _create_experiment_files(experiment, folder, div=metadata.div, include_layout=True)
+        experiment = _create_experiment(project, metadata, layout, unit_obj)
+        _create_experiment_files(experiment, folder, div=metadata.div, include_layout=True)
 
-            conditions, wells = _create_conditions_and_layout(
-                experiment,
-                layout,
-                exposure_chemical,
-                resolved_control_chemical,
-                unit_obj,
-            )
-            experiment.well_count = len(wells)
-            experiment.condition_count = len(conditions)
-        else:
-            wells = _sort_wells(
-                [
-                    well
-                    for condition in experiment.conditions.all()
-                    for well in (condition.wells if isinstance(condition.wells, list) else [])
-                ]
-            )
-            _assert_layout_compatible(experiment, layout, wells=wells)
-            _create_experiment_files(experiment, folder, div=metadata.div, include_layout=False)
+        conditions, wells = _create_conditions_and_layout(
+            experiment,
+            layout,
+            exposure_chemical,
+            resolved_control_chemical,
+            unit_obj,
+        )
+        experiment.well_count = len(wells)
+        experiment.condition_count = len(conditions)
 
         frame_div = _metrics_frame_div(metadata)
         if NeuronalMetricsFrame.objects.filter(experiment=experiment, div=frame_div).exists():
@@ -435,19 +423,6 @@ def _metrics_frame_div(metadata) -> int:
         return int(div)
 
     return 0
-
-
-def _assert_layout_compatible(
-    experiment: Experiment, layout: ExperimentLayout, *, wells: list[str]
-):
-    existing_wells = set(wells)
-    layout_wells = {well for condition in layout.conditions for well in condition.wells}
-    if existing_wells != layout_wells:
-        raise IngestionError(
-            "Layout wells differ from existing experiment; refusing to ingest metrics frame. "
-            f"experiment={experiment.code} existing_wells={len(existing_wells)} "
-            f"layout_wells={len(layout_wells)}"
-        )
 
 
 def _compute_experiment_knockout_stats(experiment: Experiment) -> dict:

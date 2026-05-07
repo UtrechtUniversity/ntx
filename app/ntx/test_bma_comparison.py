@@ -35,7 +35,7 @@ BMA_SHEET_BY_CONCENTRATION = {
 
 def test_ingested_metrics_match_bma_well_averages(stored_data_dir: Path):
     folder = discover_experiment_files(stored_data_dir)
-    experiment = create_experiment_from_files(folder, overwrite=True)
+    experiment = create_experiment_from_files(folder)
 
     bma_files = sorted(stored_data_dir.glob("*_BMA.xlsx"))
     assert bma_files, f"No *_BMA.xlsx found in {stored_data_dir}"
