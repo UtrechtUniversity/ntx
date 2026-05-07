@@ -11,6 +11,7 @@ from django.core.exceptions import ValidationError
 from django.test import RequestFactory
 
 from .admin import ExperimentIngestAdmin
+from .exposure_types import ExposureType
 from .ingest.discovery import discover_experiment_files
 from .models import Experiment, ExperimentIngest, ExperimentIngestGroup, Project
 
@@ -26,6 +27,7 @@ def _create_invalid_parsed_ingest(
     stored_data_dir: Path,
     media_root: Path,
     code: str = "STAGED-INVALID",
+    exposure_type: str = ExposureType.ACUTE,
 ) -> ExperimentIngest:
     folder = discover_experiment_files(stored_data_dir)
     project = Project.objects.get(slug="default-project")
@@ -41,6 +43,7 @@ def _create_invalid_parsed_ingest(
         chemical=folder.metadata.chemical if folder.metadata else "Lindane",
         cell_line=folder.metadata.cell_line if folder.metadata else "rcortex",
         date=date(2020, 10, 12),
+        exposure_type=exposure_type,
         layout_date=date(2020, 10, 12),
         layout_wells=48,
     )
@@ -59,6 +62,46 @@ def _create_invalid_parsed_ingest(
         wells="A1",
     )
     return ingest
+
+
+def test_execute_ingest_requires_defined_exposure_type(
+    stored_data_dir: Path,
+    media_root: Path,
+):
+    ingest = _create_invalid_parsed_ingest(
+        stored_data_dir=stored_data_dir,
+        media_root=media_root,
+        code="STAGED-UNDEFINED",
+        exposure_type=ExposureType.UNDEFINED,
+    )
+
+    with pytest.raises(ValidationError) as excinfo:
+        ingest.execute_ingest()
+
+    ingest.refresh_from_db()
+    assert ingest.status == ExperimentIngest.Status.ERROR
+    assert "Exposure type must be set" in str(excinfo.value)
+    assert "Exposure type must be set" in ingest.error_message
+    assert not Experiment.objects.filter(code=ingest.code).exists()
+
+
+def test_parse_files_defaults_missing_exposure_type_to_undefined(
+    stored_data_dir: Path,
+    media_root: Path,
+):
+    folder = discover_experiment_files(stored_data_dir)
+    project = Project.objects.get(slug="default-project")
+    ingest = ExperimentIngest.objects.create(
+        project=project,
+        layout_file=_stored_name(folder.layout_file, media_root),
+        baseline_csv=_stored_name(folder.baseline_csv, media_root),
+        exposure_csv=_stored_name(folder.exposure_csv, media_root),
+    )
+
+    ingest.parse_files()
+
+    assert ingest.status == ExperimentIngest.Status.PARSED
+    assert ingest.exposure_type == ExposureType.UNDEFINED
 
 
 def test_execute_ingest_marks_staged_validation_failure_as_error(

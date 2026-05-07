@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 from django.core.exceptions import ValidationError
 
+from .exposure_types import ExposureType
 from .metrics_store import fetch_experiment_metrics_frames
 from .models import Experiment, NeuronalMetricsFrame, Project
 
@@ -30,7 +31,9 @@ def _qc_payload():
 
 def test_fetch_experiment_metrics_frames_returns_one_record_per_div():
     project = Project.objects.create(name="Metrics Store Project")
-    experiment = Experiment.objects.create(project=project, code="EXP-1")
+    experiment = Experiment.objects.create(
+        project=project, code="EXP-1", type=ExposureType.ACUTE
+    )
 
     NeuronalMetricsFrame.objects.create(
         experiment=experiment,
@@ -56,7 +59,9 @@ def test_fetch_experiment_metrics_frames_returns_one_record_per_div():
 
 def test_metrics_frame_unique_constraint_enforced():
     project = Project.objects.create(name="Metrics Store Unique Project")
-    experiment = Experiment.objects.create(project=project, code="EXP-2")
+    experiment = Experiment.objects.create(
+        project=project, code="EXP-2", type=ExposureType.ACUTE
+    )
 
     NeuronalMetricsFrame.objects.create(
         experiment=experiment,
@@ -73,3 +78,15 @@ def test_metrics_frame_unique_constraint_enforced():
     )
     with pytest.raises(ValidationError):
         duplicate.save()
+
+
+def test_experiment_rejects_undefined_exposure_type():
+    project = Project.objects.create(name="Invalid Exposure Project")
+    experiment = Experiment(
+        project=project,
+        code="EXP-UNDEFINED",
+        type=ExposureType.UNDEFINED,
+    )
+
+    with pytest.raises(ValidationError):
+        experiment.save()

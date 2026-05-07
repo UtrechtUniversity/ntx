@@ -15,6 +15,7 @@ from django.db import transaction
 from django.utils import timezone
 from django.utils.text import slugify
 
+from ntx.exposure_types import ExposureType
 from ntx.metrics_metadata import AXION_METRICS_MAP, METRIC_SECTIONS, QC_BASELINE_METRICS
 from ntx.metrics_schema import MetricsPayload
 from ntx.models import (
@@ -170,6 +171,10 @@ def _create_experiment(
     unit: ConcentrationUnit | None,
 ) -> Experiment:
     sex_value = _map_sex(metadata.sex)
+    exposure_type = metadata.raw.get("mea:type_of_exposure") if hasattr(metadata, "raw") else None
+    if exposure_type in {None, ExposureType.UNDEFINED}:
+        raise IngestionError("Exposure type must be set before creating an experiment")
+
     experiment = Experiment(
         project=project,
         code=metadata.code,
@@ -177,7 +182,7 @@ def _create_experiment(
         researcher=(metadata.raw.get("mea:experimenter") or "") if hasattr(metadata, "raw") else "",
         date=layout.date,
         cell_line=metadata.cell_line or "",
-        type=(metadata.raw.get("mea:type_of_exposure") or "") if hasattr(metadata, "raw") else "",
+        type=exposure_type,
         manufacturer="axion",
         default_concentration_unit=unit,
     )
@@ -411,12 +416,15 @@ def _metrics_frame_div(metadata) -> int:
     Acute experiments are stored as a single slice with div=0. Chronic/subchronic
     experiments use the parsed DIV value.
     """
-    exposure_type = ""
+    exposure_type = ExposureType.UNDEFINED
     raw = getattr(metadata, "raw", None)
     if isinstance(raw, dict):
-        exposure_type = str(raw.get("mea:type_of_exposure") or "").strip().lower()
+        exposure_type = raw.get("mea:type_of_exposure") or ExposureType.UNDEFINED
 
-    if exposure_type in {"chronic", "subchronic"}:
+    if exposure_type == ExposureType.UNDEFINED:
+        raise IngestionError("Exposure type must be set before storing metrics")
+
+    if exposure_type in {ExposureType.CHRONIC, ExposureType.SUBCHRONIC}:
         div = getattr(metadata, "div", None)
         if div is None:
             raise IngestionError("Chronic experiment ingestion requires a DIV in the filename")

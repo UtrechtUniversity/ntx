@@ -5,6 +5,7 @@ from typing import Sequence
 import pytest
 
 from .analysis.pipeline import run_experiment_analysis
+from .exposure_types import ExposureType
 from .models import (
     Chemical,
     ConcentrationUnit,
@@ -59,7 +60,12 @@ def test_pipeline_normalizes_per_experiment():
     chemical = Chemical.objects.create(name="ChemA")
     control = Chemical.objects.create(name="DMSO")
 
-    exp1 = Experiment.objects.create(project=project, code="EXP-1", default_concentration_unit=unit)
+    exp1 = Experiment.objects.create(
+        project=project,
+        code="EXP-1",
+        type=ExposureType.ACUTE,
+        default_concentration_unit=unit,
+    )
     Condition.objects.create(
         experiment=exp1,
         name="Control",
@@ -85,7 +91,12 @@ def test_pipeline_normalizes_per_experiment():
         qc_json=_qc_payload(wells=["A1", "A2", "A3", "A4"]),
     )
 
-    exp2 = Experiment.objects.create(project=project, code="EXP-2", default_concentration_unit=unit)
+    exp2 = Experiment.objects.create(
+        project=project,
+        code="EXP-2",
+        type=ExposureType.ACUTE,
+        default_concentration_unit=unit,
+    )
     Condition.objects.create(
         experiment=exp2,
         name="Control",
@@ -139,6 +150,7 @@ def test_pipeline_masks_excluded_inactive_and_knockout():
     experiment = Experiment.objects.create(
         project=project,
         code="EXP-MASK",
+        type=ExposureType.ACUTE,
         default_concentration_unit=unit,
         excluded_wells=["A3"],
     )
@@ -207,7 +219,10 @@ def test_pipeline_masks_outliers_for_non_control_conditions():
     control = Chemical.objects.create(name="DMSO")
 
     experiment = Experiment.objects.create(
-        project=project, code="EXP-OUTLIER", default_concentration_unit=unit
+        project=project,
+        code="EXP-OUTLIER",
+        type=ExposureType.ACUTE,
+        default_concentration_unit=unit,
     )
     Condition.objects.create(
         experiment=experiment,

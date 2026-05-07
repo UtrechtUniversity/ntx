@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional, Sequence
 
+from ntx.exposure_types import ExposureType
+
 logger = logging.getLogger(__name__)
 
 
@@ -34,6 +36,11 @@ COMPOUNDS = {
 EXPERIMENT_TYPES = {"MEA"}
 CELL_TYPES = {"rcortex"}
 EXPOSURE_TYPES = {"acute", "chronic", "subchronic"}
+EXPOSURE_TYPE_BY_TOKEN = {
+    "acute": ExposureType.ACUTE,
+    "chronic": ExposureType.CHRONIC,
+    "subchronic": ExposureType.SUBCHRONIC,
+}
 BASELINE_EXPOSURE = {"baseline", "exposure"}
 
 DATE_PATTERNS = [
@@ -96,7 +103,7 @@ def _match_baseline_exposure(token: str) -> Optional[str]:
 
 def _match_exposure_type(token: str) -> Optional[str]:
     lowered = token.lower()
-    return lowered if lowered in EXPOSURE_TYPES else None
+    return EXPOSURE_TYPE_BY_TOKEN.get(lowered)
 
 
 def _match_compound(token: str) -> Optional[str]:
@@ -191,6 +198,10 @@ class FilenameMetadata:
 
     def merge(self, other: "FilenameMetadata") -> "FilenameMetadata":
         """Fill missing values from another parsed filename."""
+        raw = {
+            key: self.raw.get(key) if self.raw.get(key) is not None else other.raw.get(key)
+            for key in {*self.raw.keys(), *other.raw.keys()}
+        }
         return FilenameMetadata(
             code=self.code or other.code,
             chemical=self.chemical or other.chemical,
@@ -198,7 +209,7 @@ class FilenameMetadata:
             div=self.div or other.div,
             cell_line=self.cell_line or other.cell_line,
             measurement=self.measurement or other.measurement,
-            raw={**other.raw, **self.raw},
+            raw=raw,
             extra_tokens=list({*self.extra_tokens, *other.extra_tokens}),
         )
 

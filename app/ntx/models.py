@@ -17,6 +17,10 @@ from ntx.ingest.layout import ConditionLayout, ExperimentLayout
 from ntx.ingest.metadata import collect_experiment_metadata_from_files
 from ntx.ingest.wells import parse_well_string
 
+from .exposure_types import (
+    FINAL_EXPOSURE_TYPE_CHOICES,
+    ExposureType,
+)
 from .metrics_schema import MetricsPayload, MetricsQcPayload
 from .utils import sanitize_numeric_json
 
@@ -248,7 +252,7 @@ class Experiment(TimeStampedModel):
     researcher = models.CharField(max_length=255, blank=True)
     date = models.DateField(null=True, blank=True)
     cell_line = models.CharField(max_length=128, blank=True)
-    type = models.CharField(max_length=64, blank=True)
+    type = models.CharField(max_length=16, choices=FINAL_EXPOSURE_TYPE_CHOICES)
     manufacturer = models.CharField(max_length=64, blank=True)
     default_concentration_unit = models.ForeignKey(
         ConcentrationUnit,
@@ -495,7 +499,11 @@ class ExperimentIngest(TimeStampedModel):
     experimenter = models.CharField(max_length=255, blank=True, default="")
     date = models.DateField(null=True, blank=True)
     plate_number = models.CharField(max_length=64, blank=True, default="")
-    exposure_type = models.CharField(max_length=64, blank=True, default="")
+    exposure_type = models.CharField(
+        max_length=16,
+        choices=ExposureType.choices,
+        default=ExposureType.UNDEFINED,
+    )
 
     layout_date = models.DateField(null=True, blank=True)
     layout_wells = models.PositiveIntegerField(null=True, blank=True)
@@ -589,7 +597,7 @@ class ExperimentIngest(TimeStampedModel):
         self.cell_line = metadata.cell_line or ""
         self.experimenter = metadata.raw.get("mea:experimenter") or ""
         self.plate_number = metadata.raw.get("mea:plate_number") or ""
-        self.exposure_type = metadata.raw.get("mea:type_of_exposure") or ""
+        self.exposure_type = metadata.raw.get("mea:type_of_exposure") or ExposureType.UNDEFINED
         self.date = layout.date
         self.layout_date = layout.date
         self.layout_wells = layout.plate_wells
@@ -613,12 +621,17 @@ class ExperimentIngest(TimeStampedModel):
         if not self.code:
             raise ValidationError({"code": "Experiment code is required before promotion."})
 
+        if self.exposure_type == ExposureType.UNDEFINED:
+            raise ValidationError(
+                {"exposure_type": "Exposure type must be set before promotion."}
+            )
+
         raw: dict[str, str | None] = {
             "mea:date": self.date.isoformat() if self.date else None,
             "mea:experimenter": self.experimenter or None,
             "mea:plate_number": self.plate_number or None,
             "mea:type_of_cells": self.cell_line or None,
-            "mea:type_of_exposure": self.exposure_type or None,
+            "mea:type_of_exposure": self.exposure_type,
             "mea:compound": self.chemical or None,
             "mea:sex": {
                 Sex.FEMALE: "female",
