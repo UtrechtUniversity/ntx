@@ -599,9 +599,10 @@ class ExperimentIngest(TimeStampedModel):
         self.ingest_groups.all().delete()
 
         for condition in layout.conditions:
+            chemical = condition.chemical or (self.chemical if not condition.is_control else "")
             ExperimentIngestGroup.objects.create(
                 ingest=self,
-                chemical=condition.chemical or "",
+                chemical=chemical,
                 concentration=condition.concentration,
                 unit=condition.unit or "",
                 is_control=condition.is_control,
