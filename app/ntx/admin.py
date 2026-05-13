@@ -5,6 +5,7 @@ from typing import Any, cast
 
 from django.contrib import admin, messages
 from django.core.exceptions import ValidationError
+from django.core.files.uploadedfile import UploadedFile
 from django.db import models
 from django.db.models import Count
 from django.template.loader import render_to_string
@@ -354,9 +355,9 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
         should_parse = not change or any(field in request.FILES for field in upload_fields)
 
         if "baseline_csv" in request.FILES:
-            obj.original_baseline_filename = request.FILES["baseline_csv"].name
+            obj.original_baseline_filename = cast(UploadedFile, request.FILES["baseline_csv"]).name
         if "exposure_csv" in request.FILES:
-            obj.original_exposure_filename = request.FILES["exposure_csv"].name
+            obj.original_exposure_filename = cast(UploadedFile, request.FILES["exposure_csv"]).name
 
         super().save_model(request, obj, form, change)
 

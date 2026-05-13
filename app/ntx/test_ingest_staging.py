@@ -3,11 +3,13 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
+from types import MethodType
 
 import pytest
 from django.contrib import messages
 from django.contrib.admin.sites import AdminSite
 from django.core.exceptions import ValidationError
+from django.http import HttpRequest
 from django.test import RequestFactory
 from openpyxl import load_workbook
 
@@ -144,12 +146,19 @@ def test_admin_promotion_reports_attempted_failures_separately(
 
     request = RequestFactory().post("/admin/ntx/experimentingest/")
     model_admin = ExperimentIngestAdmin(ExperimentIngest, AdminSite())
-    captured: list[tuple[str, int]] = []
+    captured: list[tuple[object, int | str]] = []
 
-    def capture_message(request, message, level=messages.INFO, **kwargs):
+    def capture_message(
+        self: ExperimentIngestAdmin,
+        request: HttpRequest,
+        message: object,
+        level: int | str = messages.INFO,
+        extra_tags: str = "",
+        fail_silently: bool = False,
+    ) -> None:
         captured.append((message, level))
 
-    model_admin.message_user = capture_message
+    model_admin.message_user = MethodType(capture_message, model_admin)
 
     model_admin._promote_to_experiment(
         request,
