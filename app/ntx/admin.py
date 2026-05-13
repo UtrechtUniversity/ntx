@@ -228,6 +228,7 @@ class ExperimentIngestGroupInline(admin.TabularInline):
     model = ExperimentIngestGroup
     extra = 0
     fields = ("chemical", "concentration", "unit", "is_control", "wells")
+    autocomplete_fields = ("unit",)
     ordering = ("id",)
 
 

@@ -9,11 +9,12 @@ from django.contrib import messages
 from django.contrib.admin.sites import AdminSite
 from django.core.exceptions import ValidationError
 from django.test import RequestFactory
+from openpyxl import load_workbook
 
 from .admin import ExperimentIngestAdmin
 from .exposure_types import ExposureType
 from .ingest.discovery import discover_experiment_files
-from .models import Experiment, ExperimentIngest, ExperimentIngestGroup, Project
+from .models import ConcentrationUnit, Experiment, ExperimentIngest, ExperimentIngestGroup, Project
 
 pytestmark = pytest.mark.django_db
 
@@ -57,7 +58,10 @@ def _create_invalid_parsed_ingest(
         ingest=ingest,
         chemical="Lindane",
         concentration=Decimal("0.1"),
-        unit="uM",
+        unit=ConcentrationUnit.objects.get_or_create(
+            symbol="uM",
+            defaults={"name": "uM", "slug": "um"},
+        )[0],
         is_control=False,
         wells="A1",
     )

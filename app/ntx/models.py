@@ -227,6 +227,19 @@ class ConcentrationUnit(CanonicalMixin, TimeStampedModel):
         super().save(*args, **kwargs)
 
 
+def _get_or_create_concentration_unit(symbol: str | None) -> ConcentrationUnit | None:
+    symbol = (symbol or "").strip()
+    if not symbol:
+        return None
+    unit = (
+        ConcentrationUnit.objects.filter(symbol__iexact=symbol).first()
+        or ConcentrationUnit.objects.filter(name__iexact=symbol).first()
+    )
+    if unit:
+        return unit
+    return ConcentrationUnit.objects.create(name=symbol, symbol=symbol)
+
+
 class ExperimentStatus(models.TextChoices):
     CREATED = "CREATED", "Created"
     INGESTED = "INGESTED", "Ingested"
@@ -612,7 +625,7 @@ class ExperimentIngest(TimeStampedModel):
                 ingest=self,
                 chemical=chemical,
                 concentration=condition.concentration,
-                unit=condition.unit or "",
+                unit=_get_or_create_concentration_unit(condition.unit),
                 is_control=condition.is_control,
                 wells=" ".join(condition.wells),
             )
@@ -691,7 +704,7 @@ class ExperimentIngest(TimeStampedModel):
                     wells=wells,
                     is_control=group.is_control,
                     chemical=group.chemical or None,
-                    unit=group.unit or None,
+                    unit=(group.unit.symbol or group.unit.name) if group.unit else None,
                 )
             )
 
@@ -777,7 +790,13 @@ class ExperimentIngestGroup(TimeStampedModel):
         null=True,
         blank=True,
     )
-    unit = models.CharField(max_length=32, blank=True, default="")
+    unit = models.ForeignKey(
+        ConcentrationUnit,
+        on_delete=models.PROTECT,
+        related_name="ingest_groups",
+        null=True,
+        blank=True,
+    )
     is_control = models.BooleanField(default=False)
     wells = models.TextField(
         blank=True, default="", help_text="Space-separated wells, e.g. A1 A2 A3"
