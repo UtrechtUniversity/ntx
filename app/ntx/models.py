@@ -798,8 +798,11 @@ class ExperimentIngestGroup(TimeStampedModel):
         blank=True,
     )
     is_control = models.BooleanField(default=False)
-    wells = models.TextField(
-        blank=True, default="", help_text="Space-separated wells, e.g. A1 A2 A3"
+    wells = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Space-separated wells, e.g. A1 A2 A3",
     )
 
     class Meta(TimeStampedModel.Meta):

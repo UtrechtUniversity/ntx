@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any, cast
 
+from django import forms
 from django.contrib import admin, messages
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import UploadedFile
@@ -225,12 +226,28 @@ class ExperimentAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     list_select_related = ("project",)
 
 
+class ExperimentIngestGroupInlineForm(forms.ModelForm):
+    class Meta:
+        model = ExperimentIngestGroup
+        fields = ("chemical", "concentration", "unit", "is_control", "wells")
+        widgets = {
+            "concentration": forms.TextInput(
+                attrs={"class": "ntx-ingest-concentration-input"}
+            ),
+            "wells": forms.TextInput(attrs={"class": "ntx-ingest-wells-input"}),
+        }
+
+
 class ExperimentIngestGroupInline(admin.TabularInline):
     model = ExperimentIngestGroup
+    form = ExperimentIngestGroupInlineForm
     extra = 0
     fields = ("chemical", "concentration", "unit", "is_control", "wells")
     autocomplete_fields = ("unit",)
     ordering = ("id",)
+
+    class Media:
+        css = {"all": ("ntx/admin_ingest.css",)}
 
 
 @admin.register(ExperimentIngest)
