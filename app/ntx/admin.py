@@ -232,17 +232,13 @@ class ExperimentIngestGroupInlineForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         value = self.instance.concentration
         if value is not None and not self.is_bound:
-            self.initial["concentration"] = (
-                normalize_decimals(value)
-            )
+            self.initial["concentration"] = normalize_decimals(value)
 
     class Meta:
         model = ExperimentIngestGroup
         fields = ("chemical", "concentration", "unit", "is_control", "wells")
         widgets = {
-            "concentration": forms.TextInput(
-                attrs={"class": "ntx-ingest-concentration-input"}
-            ),
+            "concentration": forms.TextInput(attrs={"class": "ntx-ingest-concentration-input"}),
             "wells": forms.TextInput(attrs={"class": "ntx-ingest-wells-input"}),
         }
 

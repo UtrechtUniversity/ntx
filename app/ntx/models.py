@@ -622,9 +622,7 @@ class ExperimentIngest(TimeStampedModel):
         for condition in layout.conditions:
             chemical = condition.chemical or (self.chemical if not condition.is_control else "")
             concentration = (
-                condition.concentration.normalize()
-                if condition.concentration is not None
-                else None
+                condition.concentration.normalize() if condition.concentration is not None else None
             )
             ExperimentIngestGroup.objects.create(
                 ingest=self,
@@ -640,9 +638,7 @@ class ExperimentIngest(TimeStampedModel):
             raise ValidationError({"code": "Experiment code is required before promotion."})
 
         if self.exposure_type == ExposureType.UNDEFINED:
-            raise ValidationError(
-                {"exposure_type": "Exposure type must be set before promotion."}
-            )
+            raise ValidationError({"exposure_type": "Exposure type must be set before promotion."})
 
         raw: dict[str, str | None] = {
             "mea:date": self.date.isoformat() if self.date else None,

@@ -359,9 +359,7 @@ def test_ingest_lenient_missing_mask_metrics_marks_inactive(
         metadata=folder.metadata,
     )
 
-    experiment = create_experiment_from_files(
-        bad_folder, allow_missing_mask_metrics=True
-    )
+    experiment = create_experiment_from_files(bad_folder, allow_missing_mask_metrics=True)
     qc_json = experiment.neuronal_metrics_frames.get(div=0).qc_json
     assert all(value == 0 for value in qc_json["number_of_active_electrodes"])
     assert all(value == 0 for value in qc_json["number_of_bursting_electrodes"])
