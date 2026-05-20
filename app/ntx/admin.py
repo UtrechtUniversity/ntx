@@ -25,6 +25,7 @@ from .models import (
     NeuronalMetricsFrame,
     Project,
 )
+from .utils import normalize_decimals
 
 Numeric = float | int | None
 
@@ -227,6 +228,14 @@ class ExperimentAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
 
 
 class ExperimentIngestGroupInlineForm(forms.ModelForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        value = self.instance.concentration
+        if value is not None and not self.is_bound:
+            self.initial["concentration"] = (
+                normalize_decimals(value)
+            )
+
     class Meta:
         model = ExperimentIngestGroup
         fields = ("chemical", "concentration", "unit", "is_control", "wells")
@@ -412,10 +421,7 @@ class ConditionAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
         value = obj.concentration
         if value is None:
             return "-"
-        value_str = format(value.normalize(), "f")
-        if "." in value_str:
-            value_str = value_str.rstrip("0").rstrip(".")
-        return value_str or "0"
+        return normalize_decimals(value)
 
     @admin.display(description="Wells")
     def well_count(self, obj):

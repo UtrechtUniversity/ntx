@@ -29,7 +29,10 @@ from ntx.models import (
     Project,
     Sex,
 )
-from ntx.utils import sanitize_numeric_json
+from ntx.utils import (
+    normalize_decimals,
+    sanitize_numeric_json,
+)
 
 from .discovery import ExperimentFolder, parse_filename_metadata
 from .electrode_correction import ElectrodeCorrectionError, apply_electrode_correction
@@ -741,7 +744,7 @@ def _format_condition_name(cond_layout, unit: ConcentrationUnit | None) -> str:
 
     value = cond_layout.concentration
     if isinstance(value, Decimal):
-        value_str = format(value.normalize(), "f").rstrip("0").rstrip(".") or "0"
+        value_str = normalize_decimals(value)
     else:
         value_str = str(value)
     symbol = unit.symbol if unit else ""

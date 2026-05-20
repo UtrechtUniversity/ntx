@@ -7,6 +7,11 @@ from decimal import Decimal
 from typing import Any
 
 
+def normalize_decimals(value: Decimal) -> str:
+    """Format a Decimal without trailing fractional zeroes in fixed-point notation."""
+    return format(value.normalize(), "f")
+
+
 def sanitize_numeric_json(value: Any) -> Any:
     """
     Recursively sanitize JSON-like payloads containing numeric values.

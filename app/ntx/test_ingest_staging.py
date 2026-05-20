@@ -11,11 +11,11 @@ from django.contrib.admin.sites import AdminSite
 from django.core.exceptions import ValidationError
 from django.http import HttpRequest
 from django.test import RequestFactory
-from openpyxl import load_workbook
 
-from .admin import ExperimentIngestAdmin
+from .admin import ExperimentIngestAdmin, ExperimentIngestGroupInlineForm
 from .exposure_types import ExposureType
 from .ingest.discovery import discover_experiment_files
+from .ingest.layout import ConditionLayout, ExperimentLayout
 from .models import ConcentrationUnit, Experiment, ExperimentIngest, ExperimentIngestGroup, Project
 
 pytestmark = pytest.mark.django_db
@@ -23,6 +23,15 @@ pytestmark = pytest.mark.django_db
 
 def _stored_name(path: Path, media_root: Path) -> str:
     return str(path.relative_to(media_root))
+
+
+def _create_minimal_ingest(project: Project) -> ExperimentIngest:
+    return ExperimentIngest.objects.create(
+        project=project,
+        layout_file="ingest/layouts/layout.xlsx",
+        baseline_csv="ingest/baselines/baseline.csv",
+        exposure_csv="ingest/exposures/exposure.csv",
+    )
 
 
 def _create_invalid_parsed_ingest(
@@ -108,6 +117,57 @@ def test_parse_files_defaults_missing_exposure_type_to_undefined(
 
     assert ingest.status == ExperimentIngest.Status.PARSED
     assert ingest.exposure_type == ExposureType.UNDEFINED
+
+
+def test_sync_groups_from_layout_clears_fractional_trailing_zeroes():
+    project = Project.objects.get(slug="default-project")
+    ingest = _create_minimal_ingest(project)
+    ingest.chemical = "Lindane"
+    layout = ExperimentLayout(
+        date=date(2020, 10, 12),
+        plate_wells=48,
+        conditions=[
+            ConditionLayout(
+                concentration=None,
+                wells=["A1"],
+                is_control=True,
+                chemical="Control",
+            ),
+            ConditionLayout(
+                concentration=Decimal("100.000000"),
+                wells=["A2"],
+                is_control=False,
+                unit="uM",
+            ),
+            ConditionLayout(
+                concentration=Decimal("0.100000"),
+                wells=["A3"],
+                is_control=False,
+                unit="uM",
+            ),
+        ],
+    )
+
+    ingest.sync_groups_from_layout(layout)
+
+    groups = list(ingest.ingest_groups.order_by("id"))
+    assert groups[1].concentration == Decimal("100")
+    assert groups[2].concentration == Decimal("0.1")
+
+
+def test_ingest_group_inline_form_formats_concentration_initial_value():
+    project = Project.objects.get(slug="default-project")
+    ingest = _create_minimal_ingest(project)
+    group = ExperimentIngestGroup.objects.create(
+        ingest=ingest,
+        chemical="Lindane",
+        concentration=Decimal("100.000000"),
+        wells="A1",
+    )
+
+    form = ExperimentIngestGroupInlineForm(instance=group)
+
+    assert form.initial["concentration"] == "100"
 
 
 def test_execute_ingest_marks_staged_validation_failure_as_error(

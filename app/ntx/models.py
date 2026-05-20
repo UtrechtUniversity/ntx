@@ -621,10 +621,15 @@ class ExperimentIngest(TimeStampedModel):
 
         for condition in layout.conditions:
             chemical = condition.chemical or (self.chemical if not condition.is_control else "")
+            concentration = (
+                condition.concentration.normalize()
+                if condition.concentration is not None
+                else None
+            )
             ExperimentIngestGroup.objects.create(
                 ingest=self,
                 chemical=chemical,
-                concentration=condition.concentration,
+                concentration=concentration,
                 unit=_get_or_create_concentration_unit(condition.unit),
                 is_control=condition.is_control,
                 wells=" ".join(condition.wells),
