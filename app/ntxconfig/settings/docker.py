@@ -45,6 +45,9 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
+# Django secret key from environment (should be set in production)
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", SECRET_KEY)
+
 # Logging configuration
 LOGGING = {
     "version": 1,
@@ -77,3 +80,4 @@ LOGGING = {
 
 # Debug from environment (should be False in production)
 DEBUG = os.getenv("DJANGO_DEBUG", "False").lower() in ("true", "1", "yes")
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", SECRET_KEY)
