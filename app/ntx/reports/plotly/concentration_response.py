@@ -75,7 +75,7 @@ def _build_param_figure(
     # Store fit results for table
     fit_results: list[dict[str, Any]] = []
     x_vals_by_compound: dict[str, list[float]] = {}
-    y_vals_by_compound: dict[str, list[float | None]] = {}
+    y_vals_by_compound: dict[str, list[float]] = {}
 
     # For each compound, collect data and fit
     for compound in sorted(compounds.keys()):
