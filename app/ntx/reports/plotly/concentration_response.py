@@ -108,7 +108,7 @@ def _build_param_figure(
                continue
             fit_rows.append((x, mean, sem))
 
-        if x_vals:
+        if fit_rows:
             # Fit dose-response curve
             try:
                 y_vals_filtered = [y for y in y_vals if y is not None]
