@@ -86,9 +86,8 @@ def _build_param_figure(
             key=lambda c: float(c.concentration) if c.concentration is not None else float("inf"),
         )
 
-        x_vals: list[float] = []
-        y_vals: list[float | None] = []
-        error_y_vals: list[float] = []
+        # x/y/SEM
+        fit_rows: list[tuple[float, float, float | None]] = []
 
         for condition in compound_conditions_sorted:
             if condition.concentration is None:
