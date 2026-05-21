@@ -106,8 +106,7 @@ def _build_param_figure(
             # Drop the whole row in case of missing aggregate
             if mean is None or not math.isfinite(mean):
                continue
-            y_vals.append(mean)
-            error_y_vals.append(sem if sem is not None else 0)
+            fit_rows.append((x, mean, sem))
 
         if x_vals:
             # Fit dose-response curve
