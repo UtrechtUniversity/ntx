@@ -134,8 +134,8 @@ def _build_param_figure(
                     x_vals_by_compound[compound] = fit.x_fit
                     y_vals_by_compound[compound] = fit.y_fit
 
-                    # Extract IC50/EC50 from params
-                    ic50_ec50 = fit.params.get("c")
+                    # Extract IC50/EC50 from params (or None for linear fit)
+                    ic50_ec50 = fit.params.get("c") if fit.model == "4pl" else None
                     if ic50_ec50 is not None:
                         ic50_ec50 = f"{ic50_ec50:.4f}"
                     else:
