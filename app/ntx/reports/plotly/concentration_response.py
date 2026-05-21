@@ -111,12 +111,24 @@ def _build_param_figure(
         if fit_rows:
             # Fit dose-response curve
             try:
-                y_vals_filtered = [y for y in y_vals if y is not None]
-                if len(x_vals) >= 2 and len(y_vals_filtered) >= 2:
+                x_vals = [row[0] for row in fit_rows]
+                y_vals = [row[1] for row in fit_rows]
+                sem_vals = [row[2] for row in fit_rows]
+                # Do not use None/0 SEM values which would be discarded by fit_dose_response.
+                # Use sigma only when every row has a usable SEM.
+                sigma = (
+                    [sem for sem in sem_vals if sem is not None]
+                    if all(
+                        sem is not None and math.isfinite(sem) and sem > 0 for sem in sem_vals
+                    )
+                    else None
+                )
+
+                if len(fit_rows) >= 2:
                     fit = fit_dose_response(
                         x_vals,
-                        y_vals_filtered,
-                        sigma=[error_y_vals[i] for i, y in enumerate(y_vals) if y is not None] or None,
+                        y_vals,
+                        sigma=sigma,
                     )
 
                     x_vals_by_compound[compound] = fit.x_fit
