@@ -103,6 +103,9 @@ def _build_param_figure(
             mean = record.mean * 100 if record and record.mean is not None else None
             sem = record.sem * 100 if record and record.sem is not None else None
 
+            # Drop the whole row in case of missing aggregate
+            if mean is None or not math.isfinite(mean):
+               continue
             y_vals.append(mean)
             error_y_vals.append(sem if sem is not None else 0)
 
