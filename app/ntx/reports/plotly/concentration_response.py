@@ -95,7 +95,10 @@ def _build_param_figure(
 
             record = aggregates.get((condition.label, param_key))
 
-            x_vals.append(float(condition.concentration))
+            x = float(condition.concentration)
+            # Drop invalid x so all rows are valid for fit_dose_response()
+            if not math.isfinite(x) or x <= 0:
+                continue
 
             mean = record.mean * 100 if record and record.mean is not None else None
             sem = record.sem * 100 if record and record.sem is not None else None
