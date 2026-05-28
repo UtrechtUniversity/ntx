@@ -25,11 +25,6 @@ node_modules/
 app/static/css/tailwind.css
 app/static/css/tailwind.*.css.map
 
-# Frontend build output
-app/static/ntx/app.js
-app/static/ntx/app.js.map
-app/static/vendor/plotly/
-
 # Secrets
 .env
 *.env

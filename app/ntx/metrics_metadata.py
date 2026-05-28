@@ -3,7 +3,7 @@ Static metadata for Axion neural metrics.
 
 This maps Axion CSV headers to standardized parameter names, groups parameters into
 high-level sections for use in the UI, and lists the Axion columns we intentionally
-ignore during ingestion. Network burst ratio lives in the Network Burst section;
+ignore during ingestion. Network burst ratio lives in the Network section;
 the baseline count used for QC masking is tracked separately.
 """
 
@@ -72,7 +72,7 @@ METRIC_SECTIONS: dict[str, list[str]] = {
         "burst_peak",
         "time_to_burst_peak",
     ],
-    "Electrode Burst": [
+    "Network": [
         "number_of_bursts",
         "burst_duration",
         "spikes_per_burst",
@@ -83,8 +83,6 @@ METRIC_SECTIONS: dict[str, list[str]] = {
         "burst_frequency",
         "ibi_coefficient_of_variation",
         "burst_percentage",
-    ],
-    "Network Burst": [
         "number_of_network_bursts",
         "network_burst_frequency",
         "network_burst_duration",
@@ -97,8 +95,6 @@ METRIC_SECTIONS: dict[str, list[str]] = {
         "network_burst_percentage",
         "network_ibi_coefficient_of_variation",
         "network_normalized_duration_iqr",
-    ],
-    "Synchrony": [
         "area_under_normalized_cross_correlation",
         "area_under_cross_correlation",
         "fwhh_normalized_cross_correlation",

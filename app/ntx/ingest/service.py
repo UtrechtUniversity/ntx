@@ -15,6 +15,7 @@ from django.db import transaction
 from django.utils import timezone
 from django.utils.text import slugify
 
+from ntx.exposure_types import ExposureType
 from ntx.metrics_metadata import AXION_METRICS_MAP, METRIC_SECTIONS, QC_BASELINE_METRICS
 from ntx.metrics_schema import MetricsPayload
 from ntx.models import (
@@ -28,7 +29,10 @@ from ntx.models import (
     Project,
     Sex,
 )
-from ntx.utils import sanitize_numeric_json
+from ntx.utils import (
+    normalize_decimals,
+    sanitize_numeric_json,
+)
 
 from .discovery import ExperimentFolder, parse_filename_metadata
 from .electrode_correction import ElectrodeCorrectionError, apply_electrode_correction
@@ -57,56 +61,46 @@ def create_experiment_from_files(
     chemical: Chemical | None = None,
     control_chemical: Chemical | None = None,
     concentration_unit: ConcentrationUnit | None = None,
-    default_unit_symbol: str = "uM",
-    overwrite: bool = False,
+    default_unit_symbol: str | None = "uM",
+    replace_existing: bool = False,
     allow_missing_mask_metrics: bool = False,
+    layout: ExperimentLayout | None = None,
 ) -> Experiment:
     """
     Transactionally create an experiment from Axion export files.
     """
     metadata = folder.metadata or parse_filename_metadata(folder.baseline_csv)
-    layout = parse_layout_xlsx(folder.layout_file)
+    if layout is None:
+        layout = parse_layout_xlsx(folder.layout_file)
 
     project = project or _get_default_project()
 
     with transaction.atomic():
-        existing = Experiment.objects.filter(project=project, code=metadata.code).first()
+        existing = Experiment.objects.filter(code=metadata.code).first()
         if existing:
-            if not overwrite:
-                experiment = existing
-            else:
-                _delete_existing_experiment(existing)
-                experiment = None
-        else:
-            experiment = None
+            if not replace_existing:
+                raise IngestionError(
+                    f"Experiment with code '{metadata.code}' already exists. "
+                    "Use replace_existing=True to replace it."
+                )
+            _delete_existing_experiment(existing)
 
         exposure_chemical = chemical or _get_or_create_chemical(metadata.chemical or "Unknown")
         resolved_control_chemical = control_chemical or _get_or_create_chemical("DMSO")
         unit_obj = concentration_unit or _get_or_create_unit(default_unit_symbol)
 
-        if experiment is None:
-            experiment = _create_experiment(project, metadata, layout, unit_obj)
-            _create_experiment_files(experiment, folder, div=metadata.div, include_layout=True)
+        experiment = _create_experiment(project, metadata, layout, unit_obj)
+        _create_experiment_files(experiment, folder, div=metadata.div, include_layout=True)
 
-            conditions, wells = _create_conditions_and_layout(
-                experiment,
-                layout,
-                exposure_chemical,
-                resolved_control_chemical,
-                unit_obj,
-            )
-            experiment.well_count = len(wells)
-            experiment.condition_count = len(conditions)
-        else:
-            wells = _sort_wells(
-                [
-                    well
-                    for condition in experiment.conditions.all()
-                    for well in (condition.wells if isinstance(condition.wells, list) else [])
-                ]
-            )
-            _assert_layout_compatible(experiment, layout, wells=wells)
-            _create_experiment_files(experiment, folder, div=metadata.div, include_layout=False)
+        conditions, wells = _create_conditions_and_layout(
+            experiment,
+            layout,
+            exposure_chemical,
+            resolved_control_chemical,
+            unit_obj,
+        )
+        experiment.well_count = len(wells)
+        experiment.condition_count = len(conditions)
 
         frame_div = _metrics_frame_div(metadata)
         if NeuronalMetricsFrame.objects.filter(experiment=experiment, div=frame_div).exists():
@@ -180,6 +174,10 @@ def _create_experiment(
     unit: ConcentrationUnit | None,
 ) -> Experiment:
     sex_value = _map_sex(metadata.sex)
+    exposure_type = metadata.raw.get("mea:type_of_exposure") if hasattr(metadata, "raw") else None
+    if exposure_type in {None, ExposureType.UNDEFINED}:
+        raise IngestionError("Exposure type must be set before creating an experiment")
+
     experiment = Experiment(
         project=project,
         code=metadata.code,
@@ -187,7 +185,7 @@ def _create_experiment(
         researcher=(metadata.raw.get("mea:experimenter") or "") if hasattr(metadata, "raw") else "",
         date=layout.date,
         cell_line=metadata.cell_line or "",
-        type=(metadata.raw.get("mea:type_of_exposure") or "") if hasattr(metadata, "raw") else "",
+        type=exposure_type,
         manufacturer="axion",
         default_concentration_unit=unit,
     )
@@ -259,17 +257,22 @@ def _create_conditions_and_layout(
     all_wells: list[str] = []
 
     for cond_layout in layout.conditions:
-        name = _format_condition_name(cond_layout, unit)
+        condition_unit = _resolve_condition_unit(cond_layout, unit)
+        name = _format_condition_name(cond_layout, condition_unit)
         if prefix:
             name = f"{prefix}{name}"
 
-        condition_chemical = control_chemical if cond_layout.is_control else exposure_chemical
+        condition_chemical = _resolve_condition_chemical(
+            cond_layout,
+            exposure_chemical=exposure_chemical,
+            control_chemical=control_chemical,
+        )
         condition = Condition(
             experiment=experiment,
             name=name,
             chemical=condition_chemical,
             concentration=cond_layout.concentration,
-            unit=unit,
+            unit=condition_unit,
             is_control=cond_layout.is_control,
             wells=_sort_wells(cond_layout.wells),
         )
@@ -280,6 +283,29 @@ def _create_conditions_and_layout(
 
     wells = _sort_wells(all_wells)
     return conditions, wells
+
+
+def _resolve_condition_chemical(
+    cond_layout,
+    *,
+    exposure_chemical: Chemical,
+    control_chemical: Chemical,
+) -> Chemical:
+    chemical_name = (cond_layout.chemical or "").strip()
+    if cond_layout.is_control and chemical_name.lower() == "control":
+        chemical_name = ""
+    if chemical_name:
+        return _get_or_create_chemical(chemical_name)
+    return control_chemical if cond_layout.is_control else exposure_chemical
+
+
+def _resolve_condition_unit(
+    cond_layout, default_unit: ConcentrationUnit | None
+) -> ConcentrationUnit | None:
+    unit_symbol = (cond_layout.unit or "").strip()
+    if unit_symbol:
+        return _get_or_create_unit(unit_symbol)
+    return default_unit
 
 
 def _process_metrics(
@@ -393,31 +419,21 @@ def _metrics_frame_div(metadata) -> int:
     Acute experiments are stored as a single slice with div=0. Chronic/subchronic
     experiments use the parsed DIV value.
     """
-    exposure_type = ""
+    exposure_type = ExposureType.UNDEFINED
     raw = getattr(metadata, "raw", None)
     if isinstance(raw, dict):
-        exposure_type = str(raw.get("mea:type_of_exposure") or "").strip().lower()
+        exposure_type = raw.get("mea:type_of_exposure") or ExposureType.UNDEFINED
 
-    if exposure_type in {"chronic", "subchronic"}:
+    if exposure_type == ExposureType.UNDEFINED:
+        raise IngestionError("Exposure type must be set before storing metrics")
+
+    if exposure_type in {ExposureType.CHRONIC, ExposureType.SUBCHRONIC}:
         div = getattr(metadata, "div", None)
         if div is None:
             raise IngestionError("Chronic experiment ingestion requires a DIV in the filename")
         return int(div)
 
     return 0
-
-
-def _assert_layout_compatible(
-    experiment: Experiment, layout: ExperimentLayout, *, wells: list[str]
-):
-    existing_wells = set(wells)
-    layout_wells = {well for condition in layout.conditions for well in condition.wells}
-    if existing_wells != layout_wells:
-        raise IngestionError(
-            "Layout wells differ from existing experiment; refusing to ingest metrics frame. "
-            f"experiment={experiment.code} existing_wells={len(existing_wells)} "
-            f"layout_wells={len(layout_wells)}"
-        )
 
 
 def _compute_experiment_knockout_stats(experiment: Experiment) -> dict:
@@ -728,7 +744,7 @@ def _format_condition_name(cond_layout, unit: ConcentrationUnit | None) -> str:
 
     value = cond_layout.concentration
     if isinstance(value, Decimal):
-        value_str = format(value.normalize(), "f").rstrip("0").rstrip(".") or "0"
+        value_str = normalize_decimals(value)
     else:
         value_str = str(value)
     symbol = unit.symbol if unit else ""

@@ -10,8 +10,6 @@ django-environ==0.12.0
     # via -r requirements/base.in
 et-xmlfile==2.0.0
     # via openpyxl
-narwhals==2.14.0
-    # via plotly
 numpy==2.3.5
     # via
     #   -r requirements/base.in
@@ -22,15 +20,11 @@ numpy==2.3.5
 openpyxl==3.1.5
     # via -r requirements/base.in
 packaging==25.0
-    # via
-    #   plotly
-    #   statsmodels
+    # via statsmodels
 pandas==2.3.3
     # via statsmodels
 patsy==1.0.2
     # via statsmodels
-plotly==6.5.0
-    # via -r requirements/base.in
 polars==1.36.1
     # via -r requirements/base.in
 polars-runtime-32==1.36.1

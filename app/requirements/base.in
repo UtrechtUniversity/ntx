@@ -6,4 +6,4 @@ numpy
 polars
 scipy
 statsmodels
-plotly
+pandas
