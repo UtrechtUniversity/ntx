@@ -27,7 +27,7 @@ RUN npm run build
 # ──────────────────────────────────────────────
 # Stage 2: Python base (shared by local + prod)
 # ──────────────────────────────────────────────
-FROM python:3.11-slim AS python-base
+FROM docker.io/library/python:3.14-slim AS python-base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

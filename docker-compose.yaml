@@ -5,7 +5,7 @@
 
 services:
   db:
-    image: postgres:16
+    image: docker.io/library/postgres:18
     environment:
       POSTGRES_DB: ntx_dev
       POSTGRES_USER: ntx_user
@@ -13,7 +13,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ntx_user -d ntx_dev"]
       interval: 5s
@@ -33,7 +33,7 @@ services:
       DJANGO_DEBUG: "True"
       DJANGO_SECRET_KEY: "local-dev-insecure-key-change-in-production"
       DATABASE_URL: "postgres://ntx_user:ntx_local_password@db:5432/ntx_dev"
-      DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1,0.0.0.0"
+      ALLOWED_HOSTS: "localhost,127.0.0.1,0.0.0.0"
     depends_on:
       - db
     command: >
