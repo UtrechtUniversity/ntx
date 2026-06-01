@@ -35,8 +35,7 @@ services:
       DATABASE_URL: "postgres://ntx_user:ntx_local_password@db:5432/ntx_dev"
       DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1,0.0.0.0"
     depends_on:
-      db:
-        condition: service_healthy
+      - db
     command: >
       sh -c "python manage.py migrate --noinput &&
              python manage.py runserver 0.0.0.0:8000"
