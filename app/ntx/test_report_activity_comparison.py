@@ -7,6 +7,7 @@ import pytest
 from django.urls import reverse
 
 from .analysis.pipeline import run_experiment_analysis
+from .exposure_types import ExposureType
 from .models import (
     Chemical,
     ConcentrationUnit,
@@ -67,7 +68,10 @@ def test_build_activity_comparison_plot_orders_and_scales_values():
     control = Chemical.objects.create(name="DMSO")
 
     experiment = Experiment.objects.create(
-        project=project, code="EXP-REPORT", default_concentration_unit=unit
+        project=project,
+        code="EXP-REPORT",
+        type=ExposureType.ACUTE,
+        default_concentration_unit=unit,
     )
     Condition.objects.create(
         experiment=experiment,
@@ -169,7 +173,10 @@ def test_build_activity_comparison_plot_rejects_unknown_param():
     control = Chemical.objects.create(name="DMSO")
 
     experiment = Experiment.objects.create(
-        project=project, code="EXP-UNKNOWN-SECTION", default_concentration_unit=unit
+        project=project,
+        code="EXP-UNKNOWN-SECTION",
+        type=ExposureType.ACUTE,
+        default_concentration_unit=unit,
     )
     Condition.objects.create(
         experiment=experiment,
@@ -203,7 +210,10 @@ def test_project_report_payload_includes_activity_comparison_plot():
     control = Chemical.objects.create(name="DMSO")
 
     experiment = Experiment.objects.create(
-        project=project, code="EXP-SERVICE", default_concentration_unit=unit
+        project=project,
+        code="EXP-SERVICE",
+        type=ExposureType.ACUTE,
+        default_concentration_unit=unit,
     )
     Condition.objects.create(
         experiment=experiment,
@@ -255,7 +265,10 @@ def test_project_report_payload_uses_standard_default_param_selection():
     control = Chemical.objects.create(name="DMSO")
 
     experiment = Experiment.objects.create(
-        project=project, code="EXP-SERVICE-DEFAULTS", default_concentration_unit=unit
+        project=project,
+        code="EXP-SERVICE-DEFAULTS",
+        type=ExposureType.ACUTE,
+        default_concentration_unit=unit,
     )
     Condition.objects.create(
         experiment=experiment,
@@ -311,7 +324,10 @@ def test_project_report_api_returns_json(client):
     control = Chemical.objects.create(name="DMSO")
 
     experiment = Experiment.objects.create(
-        project=project, code="EXP-API", default_concentration_unit=unit
+        project=project,
+        code="EXP-API",
+        type=ExposureType.ACUTE,
+        default_concentration_unit=unit,
     )
     Condition.objects.create(
         experiment=experiment,

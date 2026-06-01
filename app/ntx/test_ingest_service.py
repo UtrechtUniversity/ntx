@@ -6,6 +6,7 @@ from typing import cast
 
 import pytest
 
+from .exposure_types import ExposureType
 from .ingest.discovery import ExperimentFolder, discover_experiment_files
 from .ingest.layout import parse_layout_xlsx
 from .ingest.service import IngestionError, create_experiment_from_files
@@ -20,6 +21,13 @@ from .models import (
 )
 
 pytestmark = pytest.mark.django_db
+
+
+def _valid_experiment_folder(stored_data_dir: Path) -> ExperimentFolder:
+    folder = discover_experiment_files(stored_data_dir)
+    assert folder.metadata is not None
+    folder.metadata.raw["mea:type_of_exposure"] = ExposureType.ACUTE
+    return folder
 
 
 def _measurement_stub(wells: list[str]) -> str:
@@ -59,10 +67,11 @@ def _write_csv_with_well_header(
 
 
 def test_create_experiment_from_real_folder(stored_data_dir: Path):
-    folder = discover_experiment_files(stored_data_dir)
+    folder = _valid_experiment_folder(stored_data_dir)
     experiment = create_experiment_from_files(folder)
 
     assert experiment.code == "201210_LvM_256135_1294-67"
+    assert experiment.type == ExposureType.ACUTE
     assert experiment.status == ExperimentStatus.INGESTED
     assert experiment.parsed_at is not None
     assert experiment.well_count == 48
@@ -119,22 +128,67 @@ def test_create_experiment_from_real_folder(stored_data_dir: Path):
     assert len(qc_json["wells"]) == experiment.well_count
 
 
-def test_create_experiment_allows_control_chemical_override(stored_data_dir: Path):
+def test_create_experiment_fails_when_exposure_type_undefined(stored_data_dir: Path):
     folder = discover_experiment_files(stored_data_dir)
+
+    with pytest.raises(IngestionError) as excinfo:
+        create_experiment_from_files(folder)
+
+    assert "Exposure type must be set" in str(excinfo.value)
+    assert not Experiment.objects.exists()
+
+
+def test_chronic_experiment_stores_metrics_at_parsed_div(stored_data_dir: Path):
+    folder = _valid_experiment_folder(stored_data_dir)
+    assert folder.metadata is not None
+    folder.metadata.raw["mea:type_of_exposure"] = ExposureType.CHRONIC
+
+    experiment = create_experiment_from_files(folder)
+
+    assert experiment.type == ExposureType.CHRONIC
+    assert experiment.neuronal_metrics_frames.filter(div=folder.metadata.div).exists()
+    assert not experiment.neuronal_metrics_frames.filter(div=0).exists()
+
+
+def test_chronic_experiment_requires_div(stored_data_dir: Path):
+    folder = _valid_experiment_folder(stored_data_dir)
+    assert folder.metadata is not None
+    folder.metadata.raw["mea:type_of_exposure"] = ExposureType.CHRONIC
+    folder.metadata.div = None
+
+    with pytest.raises(IngestionError) as excinfo:
+        create_experiment_from_files(folder)
+
+    assert "requires a DIV" in str(excinfo.value)
+
+
+def test_create_experiment_allows_control_chemical_override(stored_data_dir: Path):
+    folder = _valid_experiment_folder(stored_data_dir)
     water, _ = Chemical.objects.get_or_create(name="Water")
-    experiment = create_experiment_from_files(folder, control_chemical=water, overwrite=True)
+    experiment = create_experiment_from_files(folder, control_chemical=water)
 
     control_condition = Condition.objects.get(experiment=experiment, is_control=True)
     assert control_condition.chemical == water
 
 
-def test_overwrite_existing_experiment(stored_data_dir: Path):
-    folder = discover_experiment_files(stored_data_dir)
+def test_existing_experiment_fails_without_replace_existing(stored_data_dir: Path):
+    folder = _valid_experiment_folder(stored_data_dir)
+    original = create_experiment_from_files(folder)
+
+    with pytest.raises(IngestionError) as excinfo:
+        create_experiment_from_files(folder)
+
+    assert original.code in str(excinfo.value)
+    assert Experiment.objects.filter(id=original.id).exists()
+    assert Experiment.objects.filter(code=original.code).count() == 1
+
+
+def test_replace_existing_experiment(stored_data_dir: Path):
+    folder = _valid_experiment_folder(stored_data_dir)
     first = create_experiment_from_files(folder)
     first_id = first.id
 
-    # Re-import with overwrite should replace the existing experiment (same code).
-    second = create_experiment_from_files(folder, overwrite=True)
+    second = create_experiment_from_files(folder, replace_existing=True)
     assert first_id != second.id
     assert not Experiment.objects.filter(id=first_id).exists()
     assert Experiment.objects.filter(project=second.project, code=second.code).count() == 1
@@ -144,16 +198,16 @@ def test_overwrite_existing_experiment(stored_data_dir: Path):
 
 
 def test_ratio_contains_values_for_common_metric(stored_data_dir: Path):
-    folder = discover_experiment_files(stored_data_dir)
-    experiment = create_experiment_from_files(folder, overwrite=True)
+    folder = _valid_experiment_folder(stored_data_dir)
+    experiment = create_experiment_from_files(folder)
     payload = experiment.neuronal_metrics_frames.get(div=0).metrics_json
     burst_idx = payload["params"].index("burst_frequency")
     ratio_row = payload["ratio"][burst_idx]
     assert sum(1 for value in ratio_row if value not in (None, -1)) > (experiment.well_count / 2)
 
 
-def test_overwrite_rolls_back_on_failure(stored_data_dir: Path, media_root: Path):
-    folder = discover_experiment_files(stored_data_dir)
+def test_replace_existing_rolls_back_on_failure(stored_data_dir: Path, media_root: Path):
+    folder = _valid_experiment_folder(stored_data_dir)
     original = create_experiment_from_files(folder)
     original_id = original.id
 
@@ -174,14 +228,14 @@ def test_overwrite_rolls_back_on_failure(stored_data_dir: Path, media_root: Path
     )
 
     with pytest.raises(ValueError):
-        create_experiment_from_files(bad_folder, overwrite=True)
+        create_experiment_from_files(bad_folder, replace_existing=True)
 
     assert Experiment.objects.filter(id=original_id).exists()
     assert NeuronalMetricsFrame.objects.filter(experiment_id=original_id).exists()
 
 
 def test_ingest_fails_on_missing_wells(stored_data_dir: Path, media_root: Path):
-    folder = discover_experiment_files(stored_data_dir)
+    folder = _valid_experiment_folder(stored_data_dir)
     layout = parse_layout_xlsx(folder.layout_file)
     layout_wells = [well for condition in layout.conditions for well in condition.wells]
     assert len(layout_wells) > 0
@@ -206,13 +260,13 @@ def test_ingest_fails_on_missing_wells(stored_data_dir: Path, media_root: Path):
 
     before_count = Experiment.objects.count()
     with pytest.raises(IngestionError) as excinfo:
-        create_experiment_from_files(bad_folder, overwrite=True)
+        create_experiment_from_files(bad_folder)
     assert missing_well in str(excinfo.value)
     assert Experiment.objects.count() == before_count
 
 
 def test_ingest_succeeds_with_extra_csv_wells(stored_data_dir: Path, media_root: Path):
-    folder = discover_experiment_files(stored_data_dir)
+    folder = _valid_experiment_folder(stored_data_dir)
     layout = parse_layout_xlsx(folder.layout_file)
     layout_wells = [well for condition in layout.conditions for well in condition.wells]
 
@@ -237,7 +291,7 @@ def test_ingest_succeeds_with_extra_csv_wells(stored_data_dir: Path, media_root:
     )
 
     # Should succeed
-    experiment = create_experiment_from_files(new_folder, overwrite=True)
+    experiment = create_experiment_from_files(new_folder)
     assert experiment.status == ExperimentStatus.INGESTED
     # Ensure well count matches LAYOUT, not CSV
     assert experiment.well_count == len(layout_wells)
@@ -246,7 +300,7 @@ def test_ingest_succeeds_with_extra_csv_wells(stored_data_dir: Path, media_root:
 
 
 def test_ingest_fails_when_mask_metrics_missing(stored_data_dir: Path, media_root: Path):
-    folder = discover_experiment_files(stored_data_dir)
+    folder = _valid_experiment_folder(stored_data_dir)
     layout = parse_layout_xlsx(folder.layout_file)
     layout_wells = [well for condition in layout.conditions for well in condition.wells]
 
@@ -269,14 +323,14 @@ def test_ingest_fails_when_mask_metrics_missing(stored_data_dir: Path, media_roo
 
     before_count = Experiment.objects.count()
     with pytest.raises(IngestionError):
-        create_experiment_from_files(bad_folder, overwrite=True)
+        create_experiment_from_files(bad_folder)
     assert Experiment.objects.count() == before_count
 
 
 def test_ingest_lenient_missing_mask_metrics_marks_inactive(
     stored_data_dir: Path, media_root: Path
 ):
-    folder = discover_experiment_files(stored_data_dir)
+    folder = _valid_experiment_folder(stored_data_dir)
     layout = parse_layout_xlsx(folder.layout_file)
     layout_wells = [well for condition in layout.conditions for well in condition.wells]
 
@@ -305,9 +359,7 @@ def test_ingest_lenient_missing_mask_metrics_marks_inactive(
         metadata=folder.metadata,
     )
 
-    experiment = create_experiment_from_files(
-        bad_folder, overwrite=True, allow_missing_mask_metrics=True
-    )
+    experiment = create_experiment_from_files(bad_folder, allow_missing_mask_metrics=True)
     qc_json = experiment.neuronal_metrics_frames.get(div=0).qc_json
     assert all(value == 0 for value in qc_json["number_of_active_electrodes"])
     assert all(value == 0 for value in qc_json["number_of_bursting_electrodes"])
@@ -317,7 +369,7 @@ def test_ingest_lenient_missing_mask_metrics_marks_inactive(
 def test_ingest_strict_missing_per_well_mask_metrics_raises(
     stored_data_dir: Path, media_root: Path
 ):
-    folder = discover_experiment_files(stored_data_dir)
+    folder = _valid_experiment_folder(stored_data_dir)
     layout = parse_layout_xlsx(folder.layout_file)
     layout_wells = [well for condition in layout.conditions for well in condition.wells]
 
@@ -346,5 +398,5 @@ def test_ingest_strict_missing_per_well_mask_metrics_raises(
 
     before_count = Experiment.objects.count()
     with pytest.raises(IngestionError):
-        create_experiment_from_files(bad_folder, overwrite=True)
+        create_experiment_from_files(bad_folder)
     assert Experiment.objects.count() == before_count

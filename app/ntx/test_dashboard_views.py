@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 from django.urls import reverse
 
+from .exposure_types import ExposureType
 from .models import Chemical, Condition, Experiment, Project
 
 pytestmark = pytest.mark.django_db
@@ -15,7 +16,7 @@ def project() -> Project:
 
 @pytest.fixture
 def experiment(project: Project) -> Experiment:
-    return Experiment.objects.create(project=project, code="EXP-001")
+    return Experiment.objects.create(project=project, code="EXP-001", type=ExposureType.ACUTE)
 
 
 @pytest.fixture

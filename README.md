@@ -39,8 +39,10 @@ For example, using the example data:
 cd app
 source .venv/bin/activate
 python manage.py import_axion_folder ../data
+# Replace existing experiments instead of raising IngestionError:
+python manage.py import_axion_folder --replace-existing ../data/ENDpoiNTs
 # Control conditions default to DMSO; override if needed:
-python manage.py import_axion_folder ../data --control-chemical Water
+python manage.py import_axion_folder ../data/ENDpoiNTs --control-chemical Water
 ```
 
 

@@ -3,7 +3,10 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any, cast
 
-from django.contrib import admin
+from django import forms
+from django.contrib import admin, messages
+from django.core.exceptions import ValidationError
+from django.core.files.uploadedfile import UploadedFile
 from django.db import models
 from django.db.models import Count
 from django.template.loader import render_to_string
@@ -17,9 +20,12 @@ from .models import (
     Condition,
     Experiment,
     ExperimentFile,
+    ExperimentIngest,
+    ExperimentIngestGroup,
     NeuronalMetricsFrame,
     Project,
 )
+from .utils import normalize_decimals
 
 Numeric = float | int | None
 
@@ -221,6 +227,166 @@ class ExperimentAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     list_select_related = ("project",)
 
 
+class ExperimentIngestGroupInlineForm(forms.ModelForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        value = self.instance.concentration
+        if value is not None and not self.is_bound:
+            self.initial["concentration"] = normalize_decimals(value)
+
+    class Meta:
+        model = ExperimentIngestGroup
+        fields = ("chemical", "concentration", "unit", "is_control", "wells")
+        widgets = {
+            "concentration": forms.TextInput(attrs={"class": "ntx-ingest-concentration-input"}),
+            "wells": forms.TextInput(attrs={"class": "ntx-ingest-wells-input"}),
+        }
+
+
+class ExperimentIngestGroupInline(admin.TabularInline):
+    model = ExperimentIngestGroup
+    form = ExperimentIngestGroupInlineForm
+    extra = 0
+    fields = ("chemical", "concentration", "unit", "is_control", "wells")
+    autocomplete_fields = ("unit",)
+    ordering = ("id",)
+
+    class Media:
+        css = {"all": ("ntx/admin_ingest.css",)}
+
+
+@admin.register(ExperimentIngest)
+class ExperimentIngestAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "status",
+        "submission_method",
+        "code",
+        "project",
+        "div",
+        "chemical",
+        "sex",
+        "created_at",
+    )
+    list_filter = ("project", "status", "submission_method", "sex")
+    search_fields = ("code", "chemical", "cell_line", "experimenter")
+    readonly_fields = ("status", "error_message", "created_at", "updated_at")
+
+    add_fieldsets = (
+        (
+            "Uploads",
+            {"fields": ("project", "layout_file", "baseline_csv", "exposure_csv")},
+        ),
+    )
+
+    change_fieldsets = (
+        ("Logs", {"fields": ("error_message",)}),
+        ("Status", {"fields": ("status", "submission_method", "created_at", "updated_at")}),
+        ("Uploads", {"fields": ("layout_file", "baseline_csv", "exposure_csv")}),
+        (
+            "Parsed metadata (editable)",
+            {
+                "fields": (
+                    "project",
+                    "code",
+                    "sex",
+                    "div",
+                    "chemical",
+                    "cell_line",
+                    "experimenter",
+                    "date",
+                    "plate_number",
+                    "exposure_type",
+                ),
+            },
+        ),
+        ("Layout summary (editable)", {"fields": ("layout_date", "layout_wells")}),
+    )
+    actions = [
+        "parse_selected_uploads",
+        "promote_to_experiment",
+        "promote_to_experiment_replacing_existing",
+    ]
+
+    def get_fieldsets(self, request, obj=None):  # type: ignore[override]
+        # obj is None → add view; obj is not None → change view
+        return self.add_fieldsets if obj is None else self.change_fieldsets
+
+    def get_inlines(self, request, obj=None):
+        if obj is None:
+            return ()
+        return (ExperimentIngestGroupInline,)
+
+    @admin.action(description="Parse/reparse selected uploads")
+    def parse_selected_uploads(self, request, queryset):
+        parsed = 0
+        failed = 0
+
+        for ingest in queryset:
+            try:
+                ingest.parse_files()
+                parsed += 1
+            except Exception:
+                failed += 1
+
+        self.message_user(
+            request,
+            f"{parsed} uploads parsed, {failed} failed.",
+            level=messages.SUCCESS if not failed else messages.WARNING,
+        )
+
+    @admin.action(description="Promote selected ingests to Experiments")
+    def promote_to_experiment(self, request, queryset):
+        self._promote_to_experiment(request, queryset, replace_existing=False)
+
+    @admin.action(description="Promote selected ingests, replacing existing Experiments")
+    def promote_to_experiment_replacing_existing(self, request, queryset):
+        self._promote_to_experiment(request, queryset, replace_existing=True)
+
+    def _promote_to_experiment(self, request, queryset, *, replace_existing: bool):
+        created = 0
+        skipped = 0
+        failed = 0
+
+        for ingest in queryset:
+            if ingest.status != ExperimentIngest.Status.PARSED:
+                skipped += 1
+                continue
+
+            try:
+                ingest.execute_ingest(replace_existing=replace_existing)
+                created += 1
+            except ValidationError:
+                failed += 1
+
+        level = messages.SUCCESS if failed == 0 else messages.WARNING
+        self.message_user(
+            request,
+            f"{created} experiments created, {failed} failed, {skipped} skipped.",
+            level=level,
+        )
+
+    def save_model(self, request, obj, form, change):
+        """
+        Control when parsing happens:
+
+        - ADD view: save uploaded files, then parse once.
+        - CHANGE view: reparse only when one of the uploaded files changes.
+        """
+        upload_fields = {"layout_file", "baseline_csv", "exposure_csv"}
+        should_parse = not change or any(field in request.FILES for field in upload_fields)
+
+        if "baseline_csv" in request.FILES:
+            obj.original_baseline_filename = cast(UploadedFile, request.FILES["baseline_csv"]).name
+        if "exposure_csv" in request.FILES:
+            obj.original_exposure_filename = cast(UploadedFile, request.FILES["exposure_csv"]).name
+
+        super().save_model(request, obj, form, change)
+
+        if should_parse:
+            obj.parse_files()
+
+
 @admin.register(ExperimentFile)
 class ExperimentFileAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     list_display = ("experiment", "kind", "div", "file")
@@ -235,15 +401,23 @@ class ConditionAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
         "name",
         "experiment",
         "chemical",
-        "concentration",
+        "formatted_concentration",
         "unit",
         "is_control",
         "well_count",
     )
     list_filter = ("is_control", "experiment__project")
-    search_fields = ("name", "chemical__name")
+    search_fields = ("name", "chemical__name", "experiment__code")
     list_select_related = ("experiment", "chemical", "unit")
     readonly_fields = ("created_at", "updated_at")
+    ordering = ("-is_control", "concentration", "name")
+
+    @admin.display(description="Concentration", ordering="concentration")
+    def formatted_concentration(self, obj):
+        value = obj.concentration
+        if value is None:
+            return "-"
+        return normalize_decimals(value)
 
     @admin.display(description="Wells")
     def well_count(self, obj):

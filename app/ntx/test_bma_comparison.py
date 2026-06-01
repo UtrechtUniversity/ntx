@@ -8,6 +8,7 @@ from typing import Iterable, TypeGuard
 import pytest
 
 from .analysis.normalization import normalize_ratios_to_control
+from .exposure_types import ExposureType
 from .ingest.bma import (
     load_bma_condition_normalized_to_control,
     load_bma_condition_ratios,
@@ -35,7 +36,9 @@ BMA_SHEET_BY_CONCENTRATION = {
 
 def test_ingested_metrics_match_bma_well_averages(stored_data_dir: Path):
     folder = discover_experiment_files(stored_data_dir)
-    experiment = create_experiment_from_files(folder, overwrite=True)
+    assert folder.metadata is not None
+    folder.metadata.raw["mea:type_of_exposure"] = ExposureType.ACUTE
+    experiment = create_experiment_from_files(folder)
 
     bma_files = sorted(stored_data_dir.glob("*_BMA.xlsx"))
     assert bma_files, f"No *_BMA.xlsx found in {stored_data_dir}"

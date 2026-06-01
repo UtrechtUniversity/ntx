@@ -1,0 +1,14 @@
+#ingest_groups-group .field-concentration input,
+#ingest_groups-group .ntx-ingest-concentration-input {
+    width: 10ch;
+}
+
+#ingest_groups-group .field-unit .select2-container {
+    min-width: 12ch;
+    width: 14ch !important;
+}
+
+#ingest_groups-group .field-wells input,
+#ingest_groups-group .ntx-ingest-wells-input {
+    width: 24ch;
+}

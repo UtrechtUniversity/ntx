@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional, Sequence
 
+from ntx.exposure_types import ExposureType
+
 logger = logging.getLogger(__name__)
 
 
@@ -29,10 +31,16 @@ COMPOUNDS = {
     "oxazepam",
     "pfhxs",
     "snakevenoms",
+    "permethrin",
 }
 EXPERIMENT_TYPES = {"MEA"}
 CELL_TYPES = {"rcortex"}
 EXPOSURE_TYPES = {"acute", "chronic", "subchronic"}
+EXPOSURE_TYPE_BY_TOKEN = {
+    "acute": ExposureType.ACUTE,
+    "chronic": ExposureType.CHRONIC,
+    "subchronic": ExposureType.SUBCHRONIC,
+}
 BASELINE_EXPOSURE = {"baseline", "exposure"}
 
 DATE_PATTERNS = [
@@ -44,7 +52,7 @@ DATE_PATTERNS = [
 INITIALS_PATTERN = re.compile(r"^[A-Za-z]{2,4}$")
 EXPERIMENT_NUMBER_PATTERN = re.compile(r"^\d{6}$")
 PLATE_NUMBER_PATTERN = re.compile(r"^\d+-\d+$")
-DIV_PATTERN = re.compile(r"DIV\d+(?:\(\d+\))?", re.IGNORECASE)
+DIV_PATTERN = re.compile(r"DIV\s*\d+(?:\(\d+\))*", re.IGNORECASE)
 DURATION_PATTERN = re.compile(
     r"(\d+)\s*(s|sec|seconds|m|min|minutes|h|hr|hours|d|day|days)\b", re.IGNORECASE
 )
@@ -95,7 +103,7 @@ def _match_baseline_exposure(token: str) -> Optional[str]:
 
 def _match_exposure_type(token: str) -> Optional[str]:
     lowered = token.lower()
-    return lowered if lowered in EXPOSURE_TYPES else None
+    return EXPOSURE_TYPE_BY_TOKEN.get(lowered)
 
 
 def _match_compound(token: str) -> Optional[str]:
@@ -190,6 +198,10 @@ class FilenameMetadata:
 
     def merge(self, other: "FilenameMetadata") -> "FilenameMetadata":
         """Fill missing values from another parsed filename."""
+        raw = {
+            key: self.raw.get(key) if self.raw.get(key) is not None else other.raw.get(key)
+            for key in {*self.raw.keys(), *other.raw.keys()}
+        }
         return FilenameMetadata(
             code=self.code or other.code,
             chemical=self.chemical or other.chemical,
@@ -197,7 +209,7 @@ class FilenameMetadata:
             div=self.div or other.div,
             cell_line=self.cell_line or other.cell_line,
             measurement=self.measurement or other.measurement,
-            raw={**other.raw, **self.raw},
+            raw=raw,
             extra_tokens=list({*self.extra_tokens, *other.extra_tokens}),
         )
 
@@ -257,9 +269,9 @@ def _normalize_sex(value: str | None) -> str | None:
 def _parse_div(value: str | None) -> int | None:
     if value is None:
         return None
-    match = re.search(r"\d+", value)
+    match = re.search(r"\bDIV\s*(\d+)", value, re.IGNORECASE)
     if match:
-        return int(match.group(0))
+        return int(match.group(1))
     return None
 
 

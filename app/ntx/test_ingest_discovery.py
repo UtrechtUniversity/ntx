@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from .exposure_types import ExposureType
 from .ingest.discovery import (
     ScanResult,
     discover_experiment_files,
@@ -22,6 +23,23 @@ def test_parse_filename_metadata(data_dir: Path):
     assert meta.sex == "female"
     assert meta.div == 10
     assert meta.cell_line == "rcortex"
+    assert meta.raw["mea:type_of_exposure"] is None
+
+
+def test_parse_filename_metadata_exposure_type(data_dir: Path):
+    acute_csv = (
+        data_dir
+        / "ENDpoiNTs"
+        / "DDT"
+        / "Male"
+        / "307034"
+        / (
+            "230616_KZ_307034_5008-7_MEA_rCortex_Acute_Exposure_DDT_Male_"
+            "DIV11(000)(000)_neuralMetrics.csv"
+        )
+    )
+    meta = parse_filename_metadata(acute_csv)
+    assert meta.raw["mea:type_of_exposure"] == ExposureType.ACUTE
 
 
 def test_discover_experiment_files(data_dir: Path):

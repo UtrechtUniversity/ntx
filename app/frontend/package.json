@@ -3,8 +3,8 @@
   "version": "0.0.1",
   "scripts": {
     "copy:plotly": "node ./scripts/copy-plotly.mjs",
-    "dev:css": "npx @tailwindcss/cli -i ./src/input.css -o ../static/css/tailwind.css --watch",
-    "build:css": "npx @tailwindcss/cli -i ./src/input.css -o ../static/css/tailwind.css --minify",
+    "dev:css": "npx @tailwindcss/cli --cwd .. -i ./frontend/src/input.css -o ./static/css/tailwind.css --watch",
+    "build:css": "npx @tailwindcss/cli --cwd .. -i ./frontend/src/input.css -o ./static/css/tailwind.css --minify",
     "dev:js": "npx esbuild ./src/app.js --bundle --sourcemap --outfile=../static/ntx/app.js --platform=browser --watch",
     "build:js": "npx esbuild ./src/app.js --bundle --minify --outfile=../static/ntx/app.js --platform=browser",
     "dev": "npm run copy:plotly && concurrently --raw -k -s first \"npm:dev:css\" \"npm:dev:js\"",

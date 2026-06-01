@@ -1,4 +1,4 @@
-Django
+Django<6
 django-environ
 dj-database-url
 pydantic
@@ -7,4 +7,5 @@ numpy
 polars
 scipy
 statsmodels
+pandas<3
 plotly

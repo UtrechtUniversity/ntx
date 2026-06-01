@@ -10,6 +10,7 @@ from django.db.models import Prefetch
 from ntx.metrics_metadata import AXION_METRICS_MAP, METRIC_SECTIONS
 from ntx.metrics_store import fetch_experiment_metrics_frames, metrics_frame_to_records
 from ntx.models import Condition, Experiment, OutlierMethod
+from ntx.utils import normalize_decimals
 
 from .dtos import (
     AggregateRecord,
@@ -55,6 +56,7 @@ class _ConditionRow:
 def run_experiment_analysis(
     experiment_ids: Iterable[int],
     *,
+    ignore_exclusions: bool = False,
     outlier_method: OutlierMethod | None = None,
 ) -> AnalysisPipelineResult:
     """
@@ -135,7 +137,7 @@ def run_experiment_analysis(
 
     df = _load_frames(frames)
     df = _join_metadata(df, metas=metas, condition_rows=condition_rows)
-    df = _apply_masks(df)
+    df = _apply_masks(df, ignore_exclusions=ignore_exclusions)
     df = _normalize_controls(df, method=resolved_outlier_method)
     df, fences, outliers = _remove_outliers(df, method=resolved_outlier_method)
     aggregates = _aggregate(df)
@@ -198,10 +200,7 @@ def _format_decimal(value: Decimal) -> str:
     """Format decimal values for labels: strip fractional zeros but keep full integers."""
     if value == 0:
         raise AnalysisPipelineError("Concentration value must be non-zero for labels.")
-    value_str = format(value, "f")
-    if "." in value_str:
-        value_str = value_str.rstrip("0").rstrip(".")
-    return value_str
+    return normalize_decimals(value)
 
 
 def _build_condition_rows(
@@ -497,7 +496,7 @@ def _join_metadata(
     return df
 
 
-def _apply_masks(df: pl.DataFrame) -> pl.DataFrame:
+def _apply_masks(df: pl.DataFrame, *, ignore_exclusions: bool) -> pl.DataFrame:
     is_knockout = (pl.col("ratio") == -1).fill_null(False)
     ratio_value = pl.when(pl.col("ratio") == -1).then(None).otherwise(pl.col("ratio"))
 
@@ -511,7 +510,7 @@ def _apply_masks(df: pl.DataFrame) -> pl.DataFrame:
     df = df.with_columns(
         is_knockout=is_knockout,
         is_inactive=(inactive_by_active_electrodes | inactive_by_network_bursts),
-        is_excluded=pl.col("is_excluded"),
+        is_excluded=pl.lit(False) if ignore_exclusions else pl.col("is_excluded"),
         value_ratio=ratio_value,
     )
 

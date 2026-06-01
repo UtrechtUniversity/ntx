@@ -38,9 +38,9 @@ class Command(BaseCommand):
             help="Concentration unit symbol (default: uM)",
         )
         parser.add_argument(
-            "--overwrite",
+            "--replace-existing",
             action="store_true",
-            help="Re-import and overwrite existing experiments with the same code",
+            help="Replace existing experiments with the same code",
         )
         parser.add_argument(
             "--dry-run",
@@ -65,7 +65,7 @@ class Command(BaseCommand):
         unit_symbol = options["unit_symbol"]
         chemical_name = options.get("chemical")
         control_chemical_name = options.get("control_chemical")
-        overwrite = options["overwrite"]
+        replace_existing = options["replace_existing"]
         copy_into_storage = options["copy_into_storage"]
 
         project = self._get_project(project_slug)
@@ -96,7 +96,7 @@ class Command(BaseCommand):
                     chemical=chemical,
                     control_chemical=control_chemical,
                     default_unit_symbol=unit_symbol,
-                    overwrite=overwrite,
+                    replace_existing=replace_existing,
                 )
             except IngestionError as exc:
                 raise CommandError(str(exc)) from exc

@@ -6,6 +6,7 @@ from typing import Callable, Sequence
 from ntx.analysis.dtos import AnalysisPipelineResult
 
 from .activity_comparison import build_activity_comparison_cards
+from .concentration_response import build_concentration_response_cards
 from .contracts import PlotlyCard
 from .heatmap_mean import build_heatmap_card
 
@@ -37,6 +38,13 @@ def _build_heatmap(result: AnalysisPipelineResult, ctx: PlotlyBuildContext) -> l
     return build_heatmap_card(result, params=ctx.params)
 
 
+def _build_concentration_response(
+    result: AnalysisPipelineResult, ctx: PlotlyBuildContext
+) -> list[PlotlyCard]:
+    # Use the existing concentration response builder.
+    return build_concentration_response_cards(result, params=ctx.params)
+
+
 # Ordered list controls option ordering in the UI.
 DEFAULT_PLOTLY_BUILDERS: list[PlotlyCardBuilder] = [
     PlotlyCardBuilder(
@@ -50,6 +58,12 @@ DEFAULT_PLOTLY_BUILDERS: list[PlotlyCardBuilder] = [
         title="Heatmap",
         description="Mean response (%) for selected parameters across conditions.",
         build=_build_heatmap,
+    ),
+    PlotlyCardBuilder(
+        key="concentration_response",
+        title="Concentration-response curves",
+        description="Treatment response (%) by condition (mean +/- SEM)",
+        build=_build_concentration_response,
     ),
 ]
 
