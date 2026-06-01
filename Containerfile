@@ -6,7 +6,7 @@
 # ──────────────────────────────────────────────
 # Stage 1: Build frontend assets (Tailwind CSS + esbuild)
 # ──────────────────────────────────────────────
-FROM node:22-alpine AS frontend-builder
+FROM docker.io/library/node:24-slim AS frontend-builder
 
 # The build scripts output to ../static/ relative to the frontend dir,
 # so we set up the same directory structure:
