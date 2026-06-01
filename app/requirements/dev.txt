@@ -2,20 +2,20 @@
 #    uv pip compile requirements/dev.in --universal --output-file requirements/dev.txt
 annotated-types==0.7.0
     # via pydantic
-asgiref==3.11.0
+asgiref==3.11.1
     # via django
 colorama==0.4.6 ; sys_platform == 'win32'
     # via pytest
-django==5.2.9
+django==5.2.14
     # via
     #   -r requirements/base.in
     #   django-stubs
     #   django-stubs-ext
-django-environ==0.12.0
+django-environ==0.13.0
     # via -r requirements/base.in
-django-stubs==5.2.8
+django-stubs==6.0.5
     # via -r requirements/dev.in
-django-stubs-ext==5.2.8
+django-stubs-ext==6.0.5
     # via django-stubs
 et-xmlfile==2.0.0
     # via openpyxl
@@ -23,9 +23,9 @@ iniconfig==2.3.0
     # via pytest
 narwhals==2.21.2
     # via plotly
-nodeenv==1.9.1
+nodeenv==1.10.0
     # via pyright
-numpy==2.3.5
+numpy==2.4.6
     # via
     #   -r requirements/base.in
     #   pandas
@@ -34,7 +34,7 @@ numpy==2.3.5
     #   statsmodels
 openpyxl==3.1.5
     # via -r requirements/base.in
-packaging==25.0
+packaging==26.2
     # via
     #   plotly
     #   pytest
@@ -49,41 +49,41 @@ plotly==6.7.0
     # via -r requirements/base.in
 pluggy==1.6.0
     # via pytest
-polars==1.36.1
+polars==1.41.2
     # via -r requirements/base.in
-polars-runtime-32==1.36.1
+polars-runtime-32==1.41.2
     # via polars
-pydantic==2.12.5
+pydantic==2.13.4
     # via -r requirements/base.in
-pydantic-core==2.41.5
+pydantic-core==2.46.4
     # via pydantic
-pygments==2.19.2
+pygments==2.20.0
     # via pytest
-pyright==1.1.407
+pyright==1.1.409
     # via -r requirements/dev.in
-pytest==9.0.2
+pytest==9.0.3
     # via
     #   -r requirements/dev.in
     #   pytest-django
-pytest-django==4.11.1
+pytest-django==4.12.0
     # via -r requirements/dev.in
 python-dateutil==2.9.0.post0
     # via pandas
-pytz==2025.2
+pytz==2026.2
     # via pandas
-ruff==0.14.7
+ruff==0.15.15
     # via -r requirements/dev.in
-scipy==1.16.3
+scipy==1.17.1
     # via
     #   -r requirements/base.in
     #   statsmodels
 six==1.17.0
     # via python-dateutil
-sqlparse==0.5.4
+sqlparse==0.5.5
     # via django
 statsmodels==0.14.6
     # via -r requirements/base.in
-types-pyyaml==6.0.12.20250915
+types-pyyaml==6.0.12.20260518
     # via django-stubs
 typing-extensions==4.15.0
     # via
@@ -95,7 +95,7 @@ typing-extensions==4.15.0
     #   typing-inspection
 typing-inspection==0.4.2
     # via pydantic
-tzdata==2025.2
+tzdata==2026.2
     # via
     #   django
     #   pandas

@@ -1,4 +1,4 @@
-Django
+Django<6
 django-environ
 pydantic
 openpyxl
@@ -6,5 +6,5 @@ numpy
 polars
 scipy
 statsmodels
-pandas
+pandas<3
 plotly
