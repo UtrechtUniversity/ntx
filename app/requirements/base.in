@@ -7,3 +7,4 @@ polars
 scipy
 statsmodels
 pandas
+plotly

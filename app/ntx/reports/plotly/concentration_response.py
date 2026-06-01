@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from typing import Any
-import math
+
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
@@ -38,7 +39,9 @@ def build_concentration_response_cards(
     for order, param_key in enumerate(params):
         param = param_lookup.get(param_key)
         if param is None:
-            raise ValueError(f"Unknown parameter requested for concentration response curve: {param_key}")
+            raise ValueError(
+                f"Unknown parameter requested for concentration response curve: {param_key}"
+            )
         fig = _build_param_figure(param, conditions, aggregates)
         figure_json = serialize_figure(fig)
         cards.append(
@@ -105,7 +108,7 @@ def _build_param_figure(
 
             # Drop the whole row in case of missing aggregate
             if mean is None or not math.isfinite(mean):
-               continue
+                continue
             fit_rows.append((x, mean, sem))
 
         if fit_rows:
@@ -118,9 +121,7 @@ def _build_param_figure(
                 # Use sigma only when every row has a usable SEM.
                 sigma = (
                     [sem for sem in sem_vals if sem is not None]
-                    if all(
-                        sem is not None and math.isfinite(sem) and sem > 0 for sem in sem_vals
-                    )
+                    if all(sem is not None and math.isfinite(sem) and sem > 0 for sem in sem_vals)
                     else None
                 )
 
@@ -145,7 +146,9 @@ def _build_param_figure(
                     fit_results.append(
                         {
                             "Compound": compound,
-                            "adj_r_squared": f"{fit.adj_r2:.4f}" if fit.adj_r2 is not None else "N/A",
+                            "adj_r_squared": f"{fit.adj_r2:.4f}"
+                            if fit.adj_r2 is not None
+                            else "N/A",
                             "IC50/EC50": ic50_ec50,
                             "Model": fit.model,
                             "RMSE": f"{fit.rmse:.4f}" if fit.rmse is not None else "N/A",
@@ -192,42 +195,40 @@ def _build_param_figure(
         }
 
         fig.add_trace(
-        go.Table(
-            columnwidth=[3, 2.5, 2.5, 1.5, 2],
-            header={
-                "values": list(table_data.keys()),
-                "align": "center",
-                "font": {"size": 8, "color": "white"},
-                "fill_color": "#1f77b4",
-                "height": 22,
-            },
-            cells={
-                "values": list(table_data.values()),
-                "align": "center",
-                "font": {"size": 8},
-                "height": 20,
-                "fill_color": "white",
-            },
-        ),
-        row=2,
-        col=1,
-)
+            go.Table(
+                columnwidth=[3, 2.5, 2.5, 1.5, 2],
+                header={
+                    "values": list(table_data.keys()),
+                    "align": "center",
+                    "font": {"size": 8, "color": "white"},
+                    "fill_color": "#1f77b4",
+                    "height": 22,
+                },
+                cells={
+                    "values": list(table_data.values()),
+                    "align": "center",
+                    "font": {"size": 8},
+                    "height": 20,
+                    "fill_color": "white",
+                },
+            ),
+            row=2,
+            col=1,
+        )
 
     fig.update_layout(
         showlegend=True,
         margin=dict(t=40, b=40, l=80, r=40),
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="left",
-            x=0
-        )
-
-    )   
-    fig.update_xaxes(title_text="Concentration", type="log", title_standoff=5, automargin=True, row=1, col=1)
-    fig.update_yaxes(title_text="Treatment response (%)", rangemode="tozero", automargin=True, row=1, col=1)
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+    )
+    fig.update_xaxes(
+        title_text="Concentration", type="log", title_standoff=5, automargin=True, row=1, col=1
+    )
+    fig.update_yaxes(
+        title_text="Treatment response (%)", rangemode="tozero", automargin=True, row=1, col=1
+    )
     return fig
+
 
 def _condition_sort_key(info: ConditionInfo) -> tuple[int, str, str, float, str]:
     concentration = float(info.concentration) if info.concentration is not None else float("inf")
