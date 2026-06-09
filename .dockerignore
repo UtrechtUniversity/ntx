@@ -39,10 +39,20 @@ yarn-error.log
 htmlcov/
 
 # Project specific
-db.sqlite3
-media/
-static/
-.pytest_cache/
+app/db.sqlite3
+app/media/
+app/staticfiles/
+app/.pytest_cache/
+app/.ruff_cache/
+app/.uv-cache/
+
+# The frontend build stage regenerates these assets inside the image. Keep
+# local generated output out of the build context while allowing tracked static
+# files such as favicon/admin CSS to be copied.
+app/static/css/tailwind.css
+app/static/ntx/app.js
+app/static/ntx/app.js.map
+app/static/vendor/plotly/
 
 # Documentation
 docs/

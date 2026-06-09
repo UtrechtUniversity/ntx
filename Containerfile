@@ -46,8 +46,7 @@ RUN useradd -m -r -u 1000 appuser
 # Install Python dependencies
 COPY app/requirements ./requirements
 RUN pip install --upgrade pip && \
-    pip install -r requirements/base.txt && \
-    pip install psycopg[binary]
+    pip install -r requirements/prod.txt
 
 # Copy project source
 COPY app .
@@ -74,7 +73,7 @@ FROM python-base AS local
 USER appuser
 EXPOSE 8000
 
-ENV DJANGO_SETTINGS_MODULE=ntxconfig.settings.docker
+ENV DJANGO_SETTINGS_MODULE=ntxconfig.settings.container_local
 
 # Dev server with auto-reload (source code mounted via docker-compose)
 CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
@@ -88,10 +87,13 @@ FROM python-base AS prod
 # Install production extras if needed (e.g. gunicorn if not in base.txt)
 # RUN pip install gunicorn
 
-ENV DJANGO_SETTINGS_MODULE=ntxconfig.settings.docker
+ENV DJANGO_SETTINGS_MODULE=ntxconfig.settings.production
 
 # Collect static files — let it fail loudly if something is wrong
-RUN python manage.py collectstatic --noinput
+RUN DJANGO_SECRET_KEY=build-time-collectstatic \
+    ALLOWED_HOSTS=localhost \
+    DATABASE_URL=sqlite:////tmp/collectstatic.sqlite3 \
+    python manage.py collectstatic --noinput
 
 USER appuser
 EXPOSE 8000
