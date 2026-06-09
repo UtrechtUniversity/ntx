@@ -19,6 +19,7 @@ RUN npm ci
 
 COPY app/frontend/src ./src
 COPY app/frontend/scripts ./scripts
+COPY app/templates /build/templates
 
 # Creates /build/static/css/tailwind.css and /build/static/ntx/app.js
 RUN npm run build
@@ -31,7 +32,9 @@ FROM docker.io/library/python:3.14-slim AS python-base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    VIRTUAL_ENV=/opt/venv \
+    PATH="/opt/venv/bin:$PATH"
 
 WORKDIR /app
 
@@ -43,23 +46,10 @@ RUN apt-get update && \
 # Create non-root user
 RUN useradd -m -r -u 1000 appuser
 
-# Install Python dependencies
-COPY app/requirements ./requirements
-RUN pip install --upgrade pip && \
-    pip install -r requirements/prod.txt
-
-# Copy project source
-COPY app .
-
-# Copy built frontend assets from stage 1
-# npm run build outputs to /build/static/ (one level up from /build/frontend/)
-COPY --from=frontend-builder /build/static/ ./static/
-
-# Set ownership
-RUN chown -R appuser:appuser /app
-# OpenShift runs as a random UID in the root group,
-# so ensure group write access as well
-RUN chmod -R g+rw /app
+# Build a root-owned virtualenv. Runtime still switches to appuser, but image
+# dependencies stay immutable and independent of a user's home directory.
+RUN python -m venv "$VIRTUAL_ENV" && \
+    pip install --upgrade pip
 
 
 # ──────────────────────────────────────────────
@@ -67,8 +57,17 @@ RUN chmod -R g+rw /app
 # ──────────────────────────────────────────────
 FROM python-base AS local
 
-# Install dev dependencies if you have a separate file
-# RUN pip install -r requirements/dev.txt
+COPY app/requirements ./requirements
+RUN pip install -r requirements/dev.txt
+
+COPY app .
+COPY --from=frontend-builder /build/static/ ./static/
+
+# Give appuser ownership while keeping the root group writable for platforms
+# that run containers as an arbitrary UID in group 0. TODO: check on OpenShift.
+RUN chown -R appuser /app && \
+    chgrp -R 0 /app && \
+    chmod -R g=u /app
 
 USER appuser
 EXPOSE 8000
@@ -76,7 +75,7 @@ EXPOSE 8000
 ENV DJANGO_SETTINGS_MODULE=ntxconfig.settings.container_local
 
 # Dev server with auto-reload (source code mounted via docker-compose)
-CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+CMD ["sh", "-c", "python manage.py migrate --noinput && exec python manage.py runserver 0.0.0.0:8000"]
 
 
 # ──────────────────────────────────────────────
@@ -84,8 +83,11 @@ CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
 # ──────────────────────────────────────────────
 FROM python-base AS prod
 
-# Install production extras if needed (e.g. gunicorn if not in base.txt)
-# RUN pip install gunicorn
+COPY app/requirements ./requirements
+RUN pip install -r requirements/prod.txt
+
+COPY app .
+COPY --from=frontend-builder /build/static/ ./static/
 
 ENV DJANGO_SETTINGS_MODULE=ntxconfig.settings.production
 
@@ -94,6 +96,12 @@ RUN DJANGO_SECRET_KEY=build-time-collectstatic \
     ALLOWED_HOSTS=localhost \
     DATABASE_URL=sqlite:////tmp/collectstatic.sqlite3 \
     python manage.py collectstatic --noinput
+
+# Give appuser ownership while keeping the root group writable for platforms
+# that run containers as an arbitrary UID in group 0. TODO: check on OpenShift.
+RUN chown -R appuser /app && \
+    chgrp -R 0 /app && \
+    chmod -R g=u /app
 
 USER appuser
 EXPOSE 8000

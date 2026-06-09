@@ -56,6 +56,10 @@ polars==1.41.2
     # via -r requirements/base.in
 polars-runtime-32==1.41.2
     # via polars
+psycopg==3.3.4
+    # via -r requirements/dev.in
+psycopg-binary==3.3.4 ; implementation_name != 'pypy'
+    # via psycopg
 pydantic==2.13.4
     # via -r requirements/base.in
 pydantic-core==2.46.4
@@ -102,3 +106,4 @@ tzdata==2026.2
     # via
     #   django
     #   pandas
+    #   psycopg
