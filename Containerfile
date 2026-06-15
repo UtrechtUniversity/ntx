@@ -43,7 +43,8 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends libpq5 && \
     rm -rf /var/lib/apt/lists/*
 
-# Create non-root user
+# Create a conventional local user while keeping the image compatible with
+# OpenShift platforms that may replace it with an arbitrary UID in group 0.
 RUN useradd -m -r -u 1000 appuser
 
 # Build a root-owned virtualenv. Runtime still switches to appuser, but image
@@ -63,13 +64,14 @@ RUN pip install -r requirements/dev.txt
 COPY app .
 COPY --from=frontend-builder /build/static/ ./static/
 
-# Give appuser ownership while keeping the root group writable for platforms
-# that run containers as an arbitrary UID in group 0. TODO: check on OpenShift.
-RUN chown -R appuser /app && \
-    chgrp -R 0 /app && \
-    chmod -R g=u /app
+# Keep application code immutable at runtime. Only media needs to be writable
+# for local uploads/imports, including when OpenShift runs an arbitrary UID in
+# the root group.
+RUN mkdir -p /app/media && \
+    chown -R 1000:0 /app/media && \
+    chmod -R g=u /app/media
 
-USER appuser
+USER 1000
 EXPOSE 8000
 
 ENV DJANGO_SETTINGS_MODULE=ntxconfig.settings.container_local
@@ -97,13 +99,14 @@ RUN DJANGO_SECRET_KEY=build-time-collectstatic \
     DATABASE_URL=sqlite:////tmp/collectstatic.sqlite3 \
     python manage.py collectstatic --noinput
 
-# Give appuser ownership while keeping the root group writable for platforms
-# that run containers as an arbitrary UID in group 0. TODO: check on OpenShift.
-RUN chown -R appuser /app && \
-    chgrp -R 0 /app && \
-    chmod -R g=u /app
+# Keep application code immutable at runtime. Only media needs to be writable
+# for local uploads/imports, including when OpenShift runs an arbitrary UID in
+# the root group.
+RUN mkdir -p /app/media && \
+    chown -R 1000:0 /app/media && \
+    chmod -R g=u /app/media
 
-USER appuser
+USER 1000
 EXPOSE 8000
 
 
