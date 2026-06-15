@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - containerize-GH-workflow # Temporary for testing
   workflow_dispatch:
 
 # Deny all token scopes by default. The build job grants only what it needs.
