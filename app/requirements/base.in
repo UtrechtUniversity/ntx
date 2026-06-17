@@ -1,5 +1,6 @@
 Django<6
 django-environ
+dj-database-url
 pydantic
 openpyxl
 numpy

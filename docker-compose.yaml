@@ -1,0 +1,50 @@
+# docker-compose.yaml — local development environment
+# Run with: docker compose up --build  (or: podman-compose up --build)
+#
+# Your existing local venv + SQLite workflow is NOT affected.
+
+services:
+  db:
+    image: docker.io/library/postgres:18
+    environment:
+      POSTGRES_DB: ntx_dev
+      POSTGRES_USER: ntx_user
+      POSTGRES_PASSWORD: ntx_local_password
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ntx_user -d ntx_dev"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  web:
+    build:
+      context: .
+      dockerfile: Containerfile
+      target: local
+    ports:
+      - "8000:8000"
+    volumes:
+      # Do not mount ./app:/app here: that would hide frontend/static assets
+      # produced during the image build. Mount source paths individually so
+      # Django reloads Python/templates without replacing built static files.
+      - ./app/manage.py:/app/manage.py
+      - ./app/ntx:/app/ntx
+      - ./app/ntx_users:/app/ntx_users
+      - ./app/ntxconfig:/app/ntxconfig
+      - ./app/templates:/app/templates
+    environment:
+      DJANGO_DEBUG: "True"
+      DJANGO_SECRET_KEY: "local-dev-insecure-key-change-in-production"
+      DJANGO_SETTINGS_MODULE: "ntxconfig.settings.container_local"
+      DATABASE_URL: "postgres://ntx_user:ntx_local_password@db:5432/ntx_dev"
+      ALLOWED_HOSTS: "localhost,127.0.0.1,0.0.0.0"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

@@ -1,4 +1,6 @@
 -r base.in
+-c base.txt
+psycopg[binary]
 django-stubs
 ruff
 pyright
