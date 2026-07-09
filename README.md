@@ -44,16 +44,16 @@ Open <http://localhost:8000>. The local image runs migrations before starting
 `runserver`. Source files and templates are mounted individually so image-built
 static assets are not hidden by a broad `./app:/app` bind mount.
 
-To test the production image locally, layer the production override:
+Media files are stored in a named volume mounted at `/app/media`. This is where Django stores uploaded ingest files.
+
+To test the production image locally, use the standalone `docker-compose.prod.yaml`:
 
 ```sh
-podman compose -f docker-compose.yaml -f docker-compose.prod.yaml up --build
+podman compose -f docker-compose.prod.yaml up --build
 ```
 
-This uses the `prod` image target, clears local bind mounts, sets
-`DJANGO_DEBUG=False`, and runs the image default Gunicorn command. It still uses
-the same local PostgreSQL service and named volume. PostgreSQL 18 stores data
-under the volume mounted at `/var/lib/postgresql`.
+This uses the `prod` image target, does not mount source files, sets
+`DJANGO_DEBUG=False`, and runs the image default Gunicorn command.
 
 ## Ingest
 

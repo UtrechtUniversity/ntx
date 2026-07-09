@@ -1,18 +1,39 @@
 services:
+  db:
+    image: docker.io/library/postgres:18
+    environment:
+      POSTGRES_DB: ntx_dev
+      POSTGRES_USER: ntx_user
+      POSTGRES_PASSWORD: ntx_local_password
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ntx_user -d ntx_dev"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   web:
     build:
       context: .
       dockerfile: Containerfile
       target: prod
-    # The base service has local-development bind mounts. Reset them so the
-    # production override tests the immutable image, including built static files.
-    volumes: !reset []
+    ports:
+      - "8000:8000"
+    volumes:
+      - media:/app/media
     environment:
       DJANGO_DEBUG: "False"
       DJANGO_SECRET_KEY: "local-prod-test-insecure-key-change-in-production"
       DJANGO_SETTINGS_MODULE: "ntxconfig.settings.production"
       DATABASE_URL: "postgres://ntx_user:ntx_local_password@db:5432/ntx_dev"
       ALLOWED_HOSTS: "localhost,127.0.0.1,0.0.0.0"
-    # Clear the local runserver command and use the production image CMD
-    # (Gunicorn) instead.
-    command: null
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  media:
