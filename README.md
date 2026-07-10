@@ -53,7 +53,8 @@ podman compose -f docker-compose.prod.yaml up --build
 ```
 
 This uses the `prod` image target, does not mount source files, sets
-`DJANGO_DEBUG=False`, and runs the image default Gunicorn command.
+`DJANGO_DEBUG=False`, runs migrations once in a short-lived `migrate` service,
+and then starts the image default Gunicorn command.
 
 ## Ingest
 

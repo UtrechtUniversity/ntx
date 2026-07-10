@@ -1,3 +1,10 @@
+x-web-env: &web-env
+  DJANGO_DEBUG: "False"
+  DJANGO_SECRET_KEY: "local-prod-test-insecure-key-change-in-production"
+  DJANGO_SETTINGS_MODULE: "ntxconfig.settings.production"
+  DATABASE_URL: "postgres://ntx_user:ntx_local_password@db:5432/ntx_dev"
+  ALLOWED_HOSTS: "localhost,127.0.0.1,0.0.0.0"
+
 services:
   db:
     image: docker.io/library/postgres:18
@@ -15,6 +22,19 @@ services:
       timeout: 3s
       retries: 10
 
+  migrate:
+    build:
+      context: .
+      dockerfile: Containerfile
+      target: prod
+    command: ["python", "manage.py", "migrate", "--noinput"]
+    volumes:
+      - media:/app/media
+    environment: *web-env
+    depends_on:
+      db:
+        condition: service_healthy
+
   web:
     build:
       context: .
@@ -24,15 +44,12 @@ services:
       - "8000:8000"
     volumes:
       - media:/app/media
-    environment:
-      DJANGO_DEBUG: "False"
-      DJANGO_SECRET_KEY: "local-prod-test-insecure-key-change-in-production"
-      DJANGO_SETTINGS_MODULE: "ntxconfig.settings.production"
-      DATABASE_URL: "postgres://ntx_user:ntx_local_password@db:5432/ntx_dev"
-      ALLOWED_HOSTS: "localhost,127.0.0.1,0.0.0.0"
+    environment: *web-env
     depends_on:
       db:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
 volumes:
   pgdata:
