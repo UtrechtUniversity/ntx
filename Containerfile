@@ -110,8 +110,12 @@ USER 1000
 EXPOSE 8000
 
 
-CMD ["gunicorn", "ntxconfig.wsgi:application", \
-     "--bind", "0.0.0.0:8000", \
-     "--workers", "4", \
-     "--timeout", "60", \
-     "--access-logfile", "-"]
+# TODO: Remove the inline migrate step once production migrations are
+# handled by ArgoCD/Kubernetes as a separate job.
+CMD ["sh", "-c", \
+     "python manage.py migrate --noinput && \
+      exec gunicorn ntxconfig.wsgi:application \
+      --bind 0.0.0.0:8000 \
+      --workers 4 \
+      --timeout 60 \
+      --access-logfile -"]

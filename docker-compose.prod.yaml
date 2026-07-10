@@ -24,18 +24,21 @@ services:
       timeout: 3s
       retries: 10
 
-  migrate:
-    build:
-      context: .
-      dockerfile: Containerfile
-      target: prod
-    command: ["python", "manage.py", "migrate", "--noinput"]
-    volumes:
-      - media:/app/media
-    environment: *web-env
-    depends_on:
-      db:
-        condition: service_healthy
+  # The production image currently runs migrations in its CMD before starting
+  # Gunicorn, so this separate migration service is disabled for now.
+  # To be re-enabled when migrations are handled by ArgoCD/Kubernetes.
+  # migrate:
+  #   build:
+  #     context: .
+  #     dockerfile: Containerfile
+  #     target: prod
+  #   command: ["python", "manage.py", "migrate", "--noinput"]
+  #   volumes:
+  #     - media:/app/media
+  #   environment: *web-env
+  #   depends_on:
+  #     db:
+  #       condition: service_healthy
 
   web:
     build:
@@ -50,8 +53,10 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      migrate:
-        condition: service_completed_successfully
+      # Re-enable this dependency together with the separate migrate service
+      # above when ArgoCD/Kubernetes handles migrations outside the web CMD.
+      # migrate:
+      #   condition: service_completed_successfully
 
 volumes:
   pgdata:
