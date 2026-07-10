@@ -1,7 +1,5 @@
-# docker-compose.yaml — local development environment
-# Run with: docker compose up --build  (or: podman-compose up --build)
-#
-# Your existing local venv + SQLite workflow is NOT affected.
+# Local development
+name: ntx_dev
 
 services:
   db:
@@ -31,6 +29,7 @@ services:
       # Do not mount ./app:/app here: that would hide frontend/static assets
       # produced during the image build. Mount source paths individually so
       # Django reloads Python/templates without replacing built static files.
+      - media:/app/media
       - ./app/manage.py:/app/manage.py
       - ./app/ntx:/app/ntx
       - ./app/ntx_users:/app/ntx_users
@@ -48,3 +47,4 @@ services:
 
 volumes:
   pgdata:
+  media:
