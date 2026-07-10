@@ -1,4 +1,6 @@
 # Local development
+name: ntx_dev
+
 services:
   db:
     image: docker.io/library/postgres:18

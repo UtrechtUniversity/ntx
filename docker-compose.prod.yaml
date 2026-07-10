@@ -1,3 +1,5 @@
+name: ntx_prod_local
+
 x-web-env: &web-env
   DJANGO_DEBUG: "False"
   DJANGO_SECRET_KEY: "local-prod-test-insecure-key-change-in-production"

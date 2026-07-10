@@ -45,6 +45,7 @@ Open <http://localhost:8000>. The local image runs migrations before starting
 static assets are not hidden by a broad `./app:/app` bind mount.
 
 Media files are stored in a named volume mounted at `/app/media`. This is where Django stores uploaded ingest files.
+The development Compose stack uses the `ntx_dev` project name, so its database and media volumes are isolated from the production image test setup.
 
 To test the production image locally, use the standalone `docker-compose.prod.yaml`:
 
@@ -55,6 +56,7 @@ podman compose -f docker-compose.prod.yaml up --build
 This uses the `prod` image target, does not mount source files, sets
 `DJANGO_DEBUG=False`, runs migrations once in a short-lived `migrate` service,
 and then starts the image default Gunicorn command.
+It uses the `ntx_prod_local` project name to keep database and media volumes separate from dev.
 
 ## Ingest
 
