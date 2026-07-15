@@ -103,14 +103,17 @@ def _build_xy_scatter(
             )
         )
 
+    x_label = escape_plot_text(f"{param_lookup[x_axis].label}  (% of control)")
+    y_label = escape_plot_text(f"{param_lookup[y_axis].label} (% of control)")
+
     fig.update_layout(
         xaxis=dict(
-            title=f"{param_lookup[x_axis].label} (%)",
+            title=x_label,
             showgrid=True,
             zeroline=False,
         ),
         yaxis=dict(
-            title=f"{param_lookup[y_axis].label} (%)",
+            title=y_label,
             showgrid=True,
             zeroline=False,
         ),
