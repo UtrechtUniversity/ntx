@@ -12,14 +12,16 @@
       </p>
     </div>
 
-    <!-- Alpine reads plot metadata from this JSON to render the selector. -->
+    <!-- Alpine reads plot and experiment metadata from these JSON blobs. -->
     {{ plot_options|json_script:"plot-options-data" }}
+    {{ experiments|json_script:"experiments-data" }}
     {% url "ntx:project_report_api" slug=project.slug as project_report_api_url %}
     <section
       class="flex flex-col gap-3"
       x-data="projectReport({
         apiUrl: '{{ project_report_api_url|escapejs }}',
-        plotOptions: JSON.parse(document.getElementById('plot-options-data').textContent)
+        plotOptions: JSON.parse(document.getElementById('plot-options-data').textContent),
+        experiments: JSON.parse(document.getElementById('experiments-data').textContent)
       })"
     >
       <header class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -64,6 +66,20 @@
               x-show="activePlot && activePlot.description"
               x-text="activePlot ? activePlot.description : ''"
             ></p>
+          </div>
+          <div class="mt-2" x-show="activePlot && activePlot.param_selection_mode === 'xy_axes'">
+            <label class="text-sm text-slate-600">Experiment</label>
+            <div class="mt-1">
+              <select
+                class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+                x-model.number="selectedExperiment"
+                @change="load()"
+              >
+                <template x-for="exp in experiments" :key="exp.id">
+                  <option :value="exp.id" x-text="exp.label"></option>
+                </template>
+              </select>
+            </div>
           </div>
         </div>
       </header>
@@ -155,80 +171,56 @@
             <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
               <!-- X-Axis Selector -->
               <div class="flex flex-col gap-2">
-                <label class="text-sm font-medium text-slate-700">X-Axis Parameter</label>
+                <label class="text-sm font-medium text-slate-700" for="x-axis-input">X-Axis Parameter</label>
                 <div class="relative">
                   <input
+                    id="x-axis-input"
                     type="text"
+                    list="x-axis-options"
                     class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-slate-500"
-                    :value="xAxisSearch || (xAxis ? getParamLabel(xAxis) : '')"
-                    @input="xAxisSearch = $el.value"
-                    @focus="if (!xAxisSearch && xAxis) xAxisSearch = ''"
+                    x-model="xAxisSearch"
+                    @change="
+                      const match = availableParams.find(p => `${p.label} (${p.section})` === xAxisSearch);
+                      if (match) { xAxis = match.key; }
+                      else { xAxisSearch = xAxis ? `${getParamLabel(xAxis)} (${getParamSection(xAxis)})` : ''; }
+                    "
                     placeholder="Search or select parameter..."
                     :disabled="loading"
                   >
-                  <div
-                    class="absolute top-full left-0 right-0 mt-1 border border-slate-300 rounded-md bg-white shadow-md max-h-60 overflow-y-auto z-10"
-                    x-show="xAxisSearch.length > 0"
-                  >
-                    <template x-for="param in filteredXParams()" :key="param.key">
-                      <button
-                        type="button"
-                        class="w-full text-left px-3 py-2 text-sm hover:bg-slate-100 transition"
-                        @click="xAxis = param.key; xAxisSearch = ''"
-                      >
-                        <span x-text="param.label"></span>
-                        <span class="text-xs text-slate-500" x-text="`(${param.section})`"></span>
-                      </button>
+                  <datalist id="x-axis-options">
+                    <template x-for="param in availableParams" :key="param.key">
+                      <option :value="`${param.label} (${param.section})`"></option>
                     </template>
-                    <div
-                      x-show="filteredXParams().length === 0"
-                      class="px-3 py-2 text-sm text-slate-500"
-                    >
-                      No parameters found
-                    </div>
-                  </div>
+                  </datalist>
                 </div>
                 <span class="text-xs text-slate-600" x-text="xAxis ? `Selected: ${getParamLabel(xAxis)}` : 'No parameter selected'"></span>
               </div>
-
-              <!-- Y-Axis Selector -->
-              <div class="flex flex-col gap-2">
-                <label class="text-sm font-medium text-slate-700">Y-Axis Parameter</label>
-                <div class="relative">
-                  <input
-                    type="text"
-                    class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-slate-500"
-                    :value="yAxisSearch || (yAxis ? getParamLabel(yAxis) : '')"
-                    @input="yAxisSearch = $el.value"
-                    @focus="if (!yAxisSearch && yAxis) yAxisSearch = ''"
-                    placeholder="Search or select parameter..."
-                    :disabled="loading"
-                  >
-                  <div
-                    class="absolute top-full left-0 right-0 mt-1 border border-slate-300 rounded-md bg-white shadow-md max-h-60 overflow-y-auto z-10"
-                    x-show="yAxisSearch.length > 0"
-                  >
-                    <template x-for="param in filteredYParams()" :key="param.key">
-                      <button
-                        type="button"
-                        class="w-full text-left px-3 py-2 text-sm hover:bg-slate-100 transition"
-                        @click="yAxis = param.key; yAxisSearch = ''"
-                      >
-                        <span x-text="param.label"></span>
-                        <span class="text-xs text-slate-500" x-text="`(${param.section})`"></span>
-                      </button>
-                    </template>
-                    <div
-                      x-show="filteredYParams().length === 0"
-                      class="px-3 py-2 text-sm text-slate-500"
-                    >
-                      No parameters found
-                    </div>
-                  </div>
-                </div>
-                <span class="text-xs text-slate-600" x-text="yAxis ? `Selected: ${getParamLabel(yAxis)}` : 'No parameter selected'"></span>
-              </div>
+          <!-- Y-Axis Selector -->
+          <div class="flex flex-col gap-2">
+            <label class="text-sm font-medium text-slate-700" for="y-axis-input">Y-Axis Parameter</label>
+            <div class="relative">
+              <input
+                id="y-axis-input"
+                type="text"
+                list="y-axis-options"
+                class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-slate-500"
+                x-model="yAxisSearch"
+                @change="
+                  const match = availableParams.find(p => `${p.label} (${p.section})` === yAxisSearch);
+                  if (match) { yAxis = match.key; }
+                  else { yAxisSearch = yAxis ? `${getParamLabel(yAxis)} (${getParamSection(yAxis)})` : ''; }
+                "
+                placeholder="Search or select parameter..."
+                :disabled="loading"
+              >
+              <datalist id="y-axis-options">
+                <template x-for="param in availableParams" :key="param.key">
+                  <option :value="`${param.label} (${param.section})`"></option>
+                </template>
+              </datalist>
             </div>
+            <span class="text-xs text-slate-600" x-text="yAxis ? `Selected: ${getParamLabel(yAxis)}` : 'No parameter selected'"></span>
+          </div>
 
             <div class="flex flex-wrap items-center gap-2">
               <button
