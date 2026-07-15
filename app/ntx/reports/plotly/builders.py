@@ -58,7 +58,7 @@ def _build_concentration_response(
     result: AnalysisPipelineResult, ctx: PlotlyBuildContext
 ) -> list[PlotlyCard]:
     # Use the existing concentration response builder.
-    return build_concentration_response_cards(result, params=ctx.params)
+    return build_concentration_response_cards(result, params=ctx.params or [])
 
 
 # Ordered list controls option ordering in the UI.
@@ -85,7 +85,7 @@ DEFAULT_PLOTLY_BUILDERS: list[PlotlyCardBuilder] = [
     ),
     PlotlyCardBuilder(
         key="scatter",
-        title="Parameter correlation",
+        title="Condition mean parameter comparison",
         description="Compare two parameters against each other.",
         param_selection_mode=ParamSelectionMode.XY_AXES,
         build=_build_scatter,
