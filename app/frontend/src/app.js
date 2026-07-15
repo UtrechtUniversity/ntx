@@ -26,6 +26,8 @@ function projectReport(options = {}) {
     apiUrl: options.apiUrl, // Base API endpoint injected by the template.
     plotOptions: Array.isArray(options.plotOptions) ? options.plotOptions : [], // Options for selector.
     plot: typeof options.plot === "string" ? options.plot : "", // Current plot key.
+    experiments: Array.isArray(options.experiments) ? options.experiments : [], // Experiment options for selector
+    selectedExperiment: null, // Selected experiment id
     availableParams: [], // Parameter options returned by the report API.
     defaultSelectedParams: [], // Backend-provided default parameter keys.
     selectedParams: [], // Active parameter keys used for rendering.
@@ -89,6 +91,12 @@ function projectReport(options = {}) {
       return param ? param.label : key;
     },
 
+    
+    getParamSection(key) {
+      const param = this.availableParams.find((p) => p.key === key);
+      return param ? param.section : '';
+    },
+    
     init() {
       // Fail fast if the component is misconfigured.
       if (!this.apiUrl) {
@@ -174,6 +182,10 @@ function projectReport(options = {}) {
       
       // Plot is required by the API, so always include a valid selection.
       url.searchParams.set("plot", this.plot);
+      // Include experiment selection only for scatter/correlation plots.
+      if (this.paramSelectionMode === "xy_axes" && this.selectedExperiment) {
+        url.searchParams.set("experiment", String(this.selectedExperiment));
+      }
       return url;
     },
 
@@ -192,6 +204,14 @@ function projectReport(options = {}) {
       }
       if (payload.y_axis) {
         this.yAxis = payload.y_axis;
+      }
+      // Experiments metadata
+      this.experiments = Array.isArray(payload.available_experiments) ? payload.available_experiments : this.experiments;
+      if (payload.selected_experiment) {
+        this.selectedExperiment = payload.selected_experiment;
+      } else if (!this.selectedExperiment && this.experiments.length > 0) {
+        // Default to first experiment if none selected
+        this.selectedExperiment = this.experiments[0].id;
       }
     },
 

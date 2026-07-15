@@ -48,3 +48,6 @@ class ProjectReportPayload(BaseModel):
     param_selection_mode: str | None = None
     x_axis: str | None = None
     y_axis: str | None = None
+    # Experiments available for this project-level report
+    available_experiments: list[dict[str, object]] = Field(default_factory=list)
+    selected_experiment: int | None = None
