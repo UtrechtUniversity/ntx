@@ -71,6 +71,9 @@ RUN mkdir -p /app/media && \
     chown -R 1000:0 /app && \
     chmod -R g+rwx /app
 
+RUN mkdir /.gunicorn && \
+    chmod g+rwx /.gunicorn
+
 USER 1000
 EXPOSE 8000
 
@@ -106,7 +109,9 @@ RUN mkdir -p /app/media && \
     chown -R 1000:0 /app && \
     chmod -R g+rwx /app
 
-USER 1000
+RUN mkdir /.gunicorn && \
+    chmod g+rwx /.gunicorn
+
 EXPOSE 8000
 
 
