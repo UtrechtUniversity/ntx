@@ -112,6 +112,7 @@ RUN mkdir -p /app/media && \
 RUN mkdir /.gunicorn && \
     chmod g+rwx /.gunicorn
 
+USER 1000
 EXPOSE 8000
 
 

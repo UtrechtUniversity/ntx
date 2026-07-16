@@ -41,10 +41,12 @@ services:
   #       condition: service_healthy
 
   web:
+    # alternatively image: ghcr.io/utrechtuniversity/ntx:develop
     build:
       context: .
       dockerfile: Containerfile
-      target: prod
+      target: cloud
+    user: 1001:0 # check non root user (not 0=root or 1000=app)
     ports:
       - "8000:8000"
     volumes:
