@@ -51,7 +51,7 @@ jobs:
           context: .
           file: ./Containerfile
           # Publish only the immutable production image, not the local dev target.
-          target: prod
+          target: cloud
           platforms: linux/amd64
           push: true
           tags: |

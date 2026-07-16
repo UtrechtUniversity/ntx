@@ -68,8 +68,8 @@ COPY --from=frontend-builder /build/static/ ./static/
 # for local uploads/imports, including when OpenShift runs an arbitrary UID in
 # the root group.
 RUN mkdir -p /app/media && \
-    chown -R 1000:0 /app/media && \
-    chmod -R g=u /app/media
+    chown -R 1000:0 /app && \
+    chmod -R g+rwx /app
 
 USER 1000
 EXPOSE 8000
@@ -83,7 +83,7 @@ CMD ["sh", "-c", "python manage.py migrate --noinput && exec python manage.py ru
 # ──────────────────────────────────────────────
 # Stage 4: Production (OpenShift)
 # ──────────────────────────────────────────────
-FROM python-base AS prod
+FROM python-base AS cloud
 
 COPY app/requirements ./requirements
 RUN pip install -r requirements/prod.txt
@@ -103,8 +103,8 @@ RUN DJANGO_SECRET_KEY=build-time-collectstatic \
 # for local uploads/imports, including when OpenShift runs an arbitrary UID in
 # the root group.
 RUN mkdir -p /app/media && \
-    chown -R 1000:0 /app/media && \
-    chmod -R g=u /app/media
+    chown -R 1000:0 /app && \
+    chmod -R g+rwx /app
 
 USER 1000
 EXPOSE 8000
