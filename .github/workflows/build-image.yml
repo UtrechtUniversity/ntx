@@ -90,7 +90,7 @@ jobs:
         with:
           repository: UtrechtUniversity/ntx-k8s
           ssh-key: ${{ secrets.DEPLOY_REPO_SSH_KEY }}
-          ref: its_openshift
+          ref: develop
 
       - name: Set up yq
         uses: mikefarah/yq@v4
