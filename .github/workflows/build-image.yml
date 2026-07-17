@@ -97,13 +97,13 @@ jobs:
 
       - name: Update image tag
         run: |
-          yq e -i '.spec.template.spec.containers[0].image = "ghcr.io/utrechtuniversity/ntx:${{ github.sha }}"' k8s/deployment.yaml
+          yq e -i '.spec.template.spec.containers[0].image = "ghcr.io/utrechtuniversity/ntx:${{ github.sha }}"' ntx/deployment.yaml
 
       - name: Commit and push
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add k8s/deployment.yaml
+          git add ntx/deployment.yaml
           if git diff --cached --quiet; then
             echo "No changes to commit"
           else
