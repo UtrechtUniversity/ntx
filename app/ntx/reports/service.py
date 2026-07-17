@@ -34,14 +34,30 @@ def build_project_report_payload(
     *,
     plot: str,
     params: Sequence[str] | None = None,
+    x_axis: str | None = None,
+    y_axis: str | None = None,
+    experiment: int | None = None,
 ) -> dict[str, Any]:
     """
     Build a Plotly-first report payload for a project.
 
     - Payload: {"version": 1, "cards": [...]} with parameter metadata.
     - Cards wrap fully-formed Plotly figure JSON.
+    - For scatter plots: x_axis and y_axis parameters are used.
+    - For other plots: params (multiple selection) are used.
     """
-    experiment_ids = list(Experiment.objects.filter(project=project).values_list("id", flat=True))
+    # Build the list of available experiments for the project to populate the UI.
+    experiments_qs = list(project.experiments.all())
+    available_experiments = [
+        {"id": exp.id, "label": f"{exp.code} ({exp.pk})"} for exp in experiments_qs
+    ]
+
+    # If a specific experiment is requested, validate and run analysis for that experiment only.
+    if experiment is not None:
+        experiment_ids = [int(experiment)]
+    else:
+        experiment_ids = [exp.id for exp in experiments_qs]
+
     result = run_experiment_analysis(experiment_ids)
 
     cards: list[PlotlyCard] = []
@@ -59,8 +75,17 @@ def build_project_report_payload(
         default_selected_params=default_selected_params,
     )
 
-    context = PlotlyBuildContext(params=selected_params)
-    for builder in select_plot_builders(plot):
+    # Determine parameter selection mode based on builder
+    builders = select_plot_builders(plot)
+    param_selection_mode = builders[0].param_selection_mode.value if builders else "multiple"
+
+    # Create context with appropriate parameters
+    if param_selection_mode == "xy_axes":
+        context = PlotlyBuildContext(x_axis=x_axis, y_axis=y_axis)
+    else:
+        context = PlotlyBuildContext(params=selected_params)
+
+    for builder in builders:
         # Fail fast on unexpected builder errors (developer-facing).
         cards.extend(builder.build(result, context))
 
@@ -69,6 +94,11 @@ def build_project_report_payload(
         available_params=available_params,
         default_selected_params=default_selected_params,
         selected_params=selected_params,
+        param_selection_mode=param_selection_mode,
+        x_axis=x_axis,
+        y_axis=y_axis,
+        available_experiments=available_experiments,
+        selected_experiment=int(experiment) if experiment is not None else None,
     )
     return payload.model_dump(mode="json", exclude_none=True)
 

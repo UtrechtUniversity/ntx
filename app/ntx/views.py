@@ -29,12 +29,17 @@ def project_detail(request, slug: str):
 def project_report(request, slug: str):
     project = get_object_or_404(Project, slug=slug)
     plot_options = build_plot_options()
+    experiments = [
+        {"id": exp.id, "label": f"{exp.code} ({exp.pk})"}
+        for exp in project.experiments.all()
+    ]
     return render(
         request,
         "ntx/project_report.html",
         {
             "project": project,
             "plot_options": plot_options,
+            "experiments": experiments,
         },
     )
 
@@ -54,14 +59,25 @@ def project_report_api(request, slug: str):
     if parsed_params:
         params = parsed_params
 
+    # Extract x_axis and y_axis for scatter plot
+    x_axis = request.GET.get("x_axis", "").strip() or None
+    y_axis = request.GET.get("y_axis", "").strip() or None
+
     # Pass raw plot key through the builder registry (validated downstream).
     plot = request.GET.get("plot")
+
+    # Optional experiment selection (single experiment id)
+    experiment_param = request.GET.get("experiment")
+    experiment_id = int(experiment_param) if experiment_param and experiment_param.strip() else None
 
     try:
         payload = build_project_report_payload(
             project,
             plot=plot,
             params=params,
+            x_axis=x_axis,
+            y_axis=y_axis,
+            experiment=experiment_id,
         )
     except (AnalysisPipelineError, ValueError) as exc:
         return JsonResponse({"error": str(exc)}, status=400)
