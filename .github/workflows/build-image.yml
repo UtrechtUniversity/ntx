@@ -1,10 +1,9 @@
-# Build and publish the production container image to GitHub Container Registry.
-name: Build production image
+# Build and publish the container image to GitHub Container Registry.
+name: Build image
 
 on:
   push:
     branches:
-      - main
       - develop
   workflow_dispatch:
 
@@ -50,7 +49,7 @@ jobs:
         with:
           context: .
           file: ./Containerfile
-          # Publish only the immutable production image, not the local dev target.
+          # Publish the image, not the local dev target.
           target: cloud
           platforms: linux/amd64
           push: true
@@ -58,12 +57,12 @@ jobs:
             ${{ env.IMAGE_NAME }}:${{ github.sha }}
             ${{ env.IMAGE_NAME }}:${{ env.REF_TAG }}
 
-      - name: Verify production image starts as non-root
+      - name: Verify the image starts as non-root and not as any other user known to the container (ie. 1000=app)
         run: |
           docker pull "${IMAGE_NAME}:${GITHUB_SHA}"
           set +e
           timeout 7 docker run --rm \
-            -u 1000:0 \
+            -u 1001:0 \
             -p 8000:8000 \
             -e DJANGO_SECRET_KEY=ci-smoke \
             -e ALLOWED_HOSTS=localhost \
