@@ -77,7 +77,7 @@ jobs:
             echo "Expected the container to keep running until timeout, got exit status $status."
             exit 1
           fi
-update-deployment:
+  update-deployment:
     needs: build-push-verify
     runs-on: ubuntu-latest
     # Only fires on your isolated test branch - never touches develop pushes
