@@ -9,7 +9,10 @@ from .analysis.pipeline import AnalysisPipelineError
 from .models import Condition, Experiment, Project
 from .reports.plotly.builders import build_plot_options
 from .reports.service import build_project_report_payload
+from django.http import HttpResponse
 
+def health_check(request):
+    return HttpResponse("ok", content_type="text/plain")
 
 def projects_overview(request):
     projects = Project.objects.annotate(experiments_count=Count("experiments", distinct=True))
