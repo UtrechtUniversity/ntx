@@ -26,7 +26,8 @@ DATABASES = {
 }
 
 STATIC_ROOT = BASE_DIR / "staticfiles"  # noqa: F405
-
+CSRF_TRUSTED_ORIGINS = ["https://app.ntx.uu.nl"]
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 MIDDLEWARE = [  # noqa: F405
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
