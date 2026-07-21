@@ -23,6 +23,7 @@ line-ending = "lf"
 include = [
     "manage.py",
     "ntx",
+    "ntx_users",
     "ntxconfig",
 ]
 exclude = [
@@ -40,5 +41,5 @@ venv = ".venv"
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "ntxconfig.settings.local"
-testpaths = ["ntx"]
+testpaths = ["ntx", "ntx_users"]
 python_files = ["test_*.py"]

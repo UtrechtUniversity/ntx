@@ -31,18 +31,31 @@ python manage.py createsuperuser
 python manage.py runserver
 ```
 
-## Podman Compose
+## Podman/Docker Compose
 
 The default Compose file runs the local development image with Django's
 development server and a PostgreSQL container:
 
 ```sh
+# Optional: override the local admin/admin defaults.
+cp .env.example .env
 podman compose up --build
+# Or: docker compose up --build
 ```
 
-Open <http://localhost:8000>. The local image runs migrations before starting
-`runserver`. Source files and templates are mounted individually so image-built
-static assets are not hidden by a broad `./app:/app` bind mount.
+Open <http://localhost:8000>. The local image runs migrations before starting `runserver`.
+It also creates the superuser configured by the `DJANGO_SUPERUSER_*` variables when that
+username does not exist.
+Source files and templates are mounted individually so image-built static assets are not
+hidden by a broad `./app:/app` bind mount.
+
+Compose uses `admin` for both `DJANGO_SUPERUSER_USERNAME` and
+`DJANGO_SUPERUSER_PASSWORD` when they are unset or empty.
+Values supplied by the shell or `.env` override these local defaults.
+`DJANGO_SUPERUSER_EMAIL` is optional.
+Direct image starts must provide the required username and password.
+Any existing active staff superuser is left unchanged.
+In case of an existing non-superuser with the configured username, startup fails.
 
 Media files are stored in a named volume mounted at `/app/media`. This is where Django stores uploaded ingest files.
 The development Compose stack uses the `ntx_dev` project name, so its database and media volumes are isolated from the production image test setup.
@@ -53,9 +66,9 @@ To test the production image locally, use the standalone `docker-compose.prod.ya
 podman compose -f docker-compose.prod.yaml up --build
 ```
 
-This uses the `prod` image target, does not mount source files, sets
-`DJANGO_DEBUG=False`, runs migrations once in a short-lived `migrate` service,
-and then starts the image default Gunicorn command.
+This uses the `cloud` image target, does not mount source files, sets
+`DJANGO_DEBUG=False`, and runs migrations and the superuser command
+in the web container before starting Gunicorn.
 It uses the `ntx_prod_local` project name to keep database and media volumes separate from dev.
 
 ## Ingest

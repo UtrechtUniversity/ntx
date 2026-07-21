@@ -67,6 +67,8 @@ jobs:
             -e DJANGO_SECRET_KEY=ci-smoke \
             -e ALLOWED_HOSTS=localhost \
             -e DATABASE_URL=sqlite:////tmp/smoke.sqlite3 \
+            -e DJANGO_SUPERUSER_USERNAME=ci-admin \
+            -e DJANGO_SUPERUSER_PASSWORD="${GITHUB_SHA}" \
             "${IMAGE_NAME}:${GITHUB_SHA}"
           status="$?"
           set -e

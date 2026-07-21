@@ -80,7 +80,10 @@ EXPOSE 8000
 ENV DJANGO_SETTINGS_MODULE=ntxconfig.settings.container_local
 
 # Dev server with auto-reload (source code mounted via docker-compose)
-CMD ["sh", "-c", "python manage.py migrate --noinput && exec python manage.py runserver 0.0.0.0:8000"]
+CMD ["sh", "-c", \
+     "python manage.py migrate --noinput && \
+      python manage.py ensure_superuser && \
+      exec python manage.py runserver 0.0.0.0:8000"]
 
 
 # ──────────────────────────────────────────────
@@ -120,6 +123,7 @@ EXPOSE 8000
 # handled by ArgoCD/Kubernetes as a separate job.
 CMD ["sh", "-c", \
      "python manage.py migrate --noinput && \
+      python manage.py ensure_superuser && \
       exec gunicorn ntxconfig.wsgi:application \
       --bind 0.0.0.0:8000 \
       --workers 4 \

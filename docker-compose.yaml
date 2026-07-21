@@ -41,6 +41,10 @@ services:
       DJANGO_SETTINGS_MODULE: "ntxconfig.settings.container_local"
       DATABASE_URL: "postgres://ntx_user:ntx_local_password@db:5432/ntx_dev"
       ALLOWED_HOSTS: "localhost,127.0.0.1,0.0.0.0"
+      # Local defaults; override from .env when needed.
+      DJANGO_SUPERUSER_USERNAME: "${DJANGO_SUPERUSER_USERNAME:-admin}"
+      DJANGO_SUPERUSER_PASSWORD: "${DJANGO_SUPERUSER_PASSWORD:-admin}"
+      DJANGO_SUPERUSER_EMAIL: "${DJANGO_SUPERUSER_EMAIL:-}" # Optional
     depends_on:
       db:
         condition: service_healthy
