@@ -26,7 +26,7 @@ def env_bool(name: str, *, default: bool) -> bool:
     raise ImproperlyConfigured(f"{name} must be a boolean")
 
 SECRET_KEY = require_env("DJANGO_SECRET_KEY")
-DEBUG = os.getenv("DJANGO_DEBUG", "False").lower() in {"1", "true", "yes"}
+DEBUG = env_bool("DJANGO_DEBUG", default=False)
 ALLOWED_HOSTS = [host.strip() for host in require_env("ALLOWED_HOSTS").split(",") if host.strip()]
 CSRF_TRUSTED_ORIGINS = [
     origin.strip() for origin in os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",") if origin.strip()
