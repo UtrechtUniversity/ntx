@@ -1,7 +1,7 @@
 # Multi-stage Containerfile for NTX project
 # Usage:
 #   Local dev:   docker build --target local -t ntx:dev .
-#   Production:  docker build --target prod  -t ntx:prod .
+#   Cloud:  docker build --target cloud  -t ntx:cloud .
 
 # ──────────────────────────────────────────────
 # Stage 1: Build frontend assets (Tailwind CSS + esbuild)
