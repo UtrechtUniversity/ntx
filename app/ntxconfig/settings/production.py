@@ -13,9 +13,30 @@ def require_env(name: str) -> str:
     return value
 
 
+def env_bool(name: str, *, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes"}:
+        return True
+    if normalized in {"0", "false", "no"}:
+        return False
+    raise ImproperlyConfigured(f"{name} must be a boolean")
+
 SECRET_KEY = require_env("DJANGO_SECRET_KEY")
-DEBUG = os.getenv("DJANGO_DEBUG", "False").lower() in {"1", "true", "yes"}
+DEBUG = env_bool("DJANGO_DEBUG", default=False)
 ALLOWED_HOSTS = [host.strip() for host in require_env("ALLOWED_HOSTS").split(",") if host.strip()]
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip() for origin in os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",") if origin.strip()
+]
+# OpenShift router must replace client-supplied X-Forwarded-Proto
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+_secure_cookies = env_bool("DJANGO_SECURE_COOKIES", default=True)
+CSRF_COOKIE_SECURE = _secure_cookies
+SESSION_COOKIE_SECURE = _secure_cookies
 
 DATABASES = {
     "default": dj_database_url.parse(
