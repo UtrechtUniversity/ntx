@@ -11,6 +11,11 @@ from django.db import models
 from django.db.models import Count
 from django.template.loader import render_to_string
 from django.utils.safestring import SafeString, mark_safe
+from django.http import HttpResponse
+from django.forms.models import model_to_dict
+import io
+import zipfile
+import json
 
 from .metrics_metadata import METRIC_SECTIONS
 from .metrics_schema import MetricsPayload
@@ -306,6 +311,7 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
         "parse_selected_uploads",
         "promote_to_experiment",
         "promote_to_experiment_replacing_existing",
+        "download_parsed_metadata",
     ]
 
     def get_fieldsets(self, request, obj=None):  # type: ignore[override]
@@ -365,6 +371,37 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
             f"{created} experiments created, {failed} failed, {skipped} skipped.",
             level=level,
         )
+
+    @admin.action(description="Download ingest records as JSON for selected ingests")
+    def download_parsed_metadata(self, request, queryset):
+        """Create a zip containing the ExperimentIngest row data (all table fields) as JSON.
+
+        Each selected ingest produces a file named `<code_or_pk>_ingest.json`.
+        """
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            added = 0
+            for ingest in queryset:
+                try:
+                    data = model_to_dict(ingest)
+                    filename = f"{ingest.code or ingest.pk}_ingest.json"
+                    zf.writestr(filename, json.dumps(data, indent=2, default=str))
+                    added += 1
+                except Exception:
+                    continue
+
+        if added == 0:
+            self.message_user(
+                request,
+                "No ingest records exported for selected ingests.",
+                level=messages.WARNING,
+            )
+            return None
+
+        buffer.seek(0)
+        resp = HttpResponse(buffer.getvalue(), content_type="application/zip")
+        resp["Content-Disposition"] = "attachment; filename=ingest_records.zip"
+        return resp
 
     def save_model(self, request, obj, form, change):
         """
