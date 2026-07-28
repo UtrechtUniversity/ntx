@@ -93,6 +93,7 @@ python manage.py import_axion_folder ../data/ENDpoiNTs --control-chemical Water
 # Use uv instead of plain pip
 uv pip compile requirements/base.in --universal --output-file requirements/base.txt
 uv pip compile requirements/dev.in --universal --output-file requirements/dev.txt
+uv pip compile requirements/prod.in --universal --output-file requirements/prod.txt
 
 # Use Ruff linter
 ruff check
