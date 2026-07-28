@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import io
+import json
+import zipfile
 from collections.abc import Sequence
 from typing import Any, cast
 
@@ -9,13 +12,10 @@ from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import UploadedFile
 from django.db import models
 from django.db.models import Count
+from django.forms.models import model_to_dict
+from django.http import HttpResponse
 from django.template.loader import render_to_string
 from django.utils.safestring import SafeString, mark_safe
-from django.http import HttpResponse
-from django.forms.models import model_to_dict
-import io
-import zipfile
-import json
 
 from .metrics_metadata import METRIC_SECTIONS
 from .metrics_schema import MetricsPayload
@@ -376,15 +376,26 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
     def download_parsed_metadata(self, request, queryset):
         """Create a zip containing the ExperimentIngest row data (all table fields) as JSON.
 
-        Each selected ingest produces a file named `<code_or_pk>_ingest.json`.
+        Every selected ingest must have a code. Each produces `<code>_ingest.json`.
         """
+        ingests = list(queryset)
+        missing_code_ids = sorted(ingest.pk for ingest in ingests if not ingest.code)
+        if missing_code_ids:
+            formatted_ids = ", ".join(str(pk) for pk in missing_code_ids)
+            self.message_user(
+                request,
+                f"Cannot export selected ingests. Missing code for ingest IDs: {formatted_ids}.",
+                level=messages.ERROR,
+            )
+            return None
+
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as zf:
             added = 0
-            for ingest in queryset:
+            for ingest in ingests:
                 try:
                     data = model_to_dict(ingest)
-                    filename = f"{ingest.code or ingest.pk}_ingest.json"
+                    filename = f"{ingest.code}_ingest.json"
                     zf.writestr(filename, json.dumps(data, indent=2, default=str))
                     added += 1
                 except Exception:
