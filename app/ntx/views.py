@@ -6,7 +6,7 @@ from django.shortcuts import get_object_or_404, render
 from django.views.decorators.http import require_GET
 
 from .analysis.pipeline import AnalysisPipelineError
-from .models import Condition, Experiment, Project
+from .models import Condition, Experiment, OutlierMethod, Project
 from .reports.plotly.builders import build_plot_options
 from .reports.service import build_project_report_payload
 
@@ -40,6 +40,7 @@ def project_report(request, slug: str):
             "project": project,
             "plot_options": plot_options,
             "experiments": experiments,
+            "outlier_method_choices": OutlierMethod.choices,
         },
     )
 
@@ -65,6 +66,7 @@ def project_report_api(request, slug: str):
 
     # Pass raw plot key through the builder registry (validated downstream).
     plot = request.GET.get("plot")
+    outlier_method = request.GET.get("outlier_method")
 
     # Optional experiment selection (single experiment id)
     experiment_param = request.GET.get("experiment")
@@ -78,6 +80,7 @@ def project_report_api(request, slug: str):
             x_axis=x_axis,
             y_axis=y_axis,
             experiment=experiment_id,
+            outlier_method=outlier_method,
         )
     except (AnalysisPipelineError, ValueError) as exc:
         return JsonResponse({"error": str(exc)}, status=400)
