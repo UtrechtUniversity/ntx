@@ -5,6 +5,7 @@ from collections.abc import Sequence
 from typing import Any
 from ntx.analysis.pipeline import _condition_display_label, run_experiment_analysis
 from ntx.models import OutlierMethod,Experiment, Project
+
 from ntx.reports.plotly.builders import PlotlyBuildContext, select_plot_builders
 from ntx.reports.plotly.contracts import (
     PlotlyCard,
@@ -38,7 +39,6 @@ def build_project_report_payload(
     experiment: int | None = None,
     selected_wells: list[str] | None = None,
     outlier_method: str | OutlierMethod | None = None,
-
 ) -> dict[str, Any]:
     """
     Build a Plotly-first report payload for a project.
@@ -122,7 +122,6 @@ def build_project_report_payload(
         selected_wells=normalized_selected_wells if param_selection_mode == "xy_axes" else None,
     )
     return payload.model_dump(mode="json", exclude_none=True)
-
 
 def _resolve_selected_params(
     *,
