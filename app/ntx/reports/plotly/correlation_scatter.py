@@ -28,7 +28,7 @@ def build_correlation_scatter_card(
         return []
 
     param_lookup = {param.key: param for param in result.labels.params}
-    
+
     if x_axis not in param_lookup:
         raise ValueError(f"Unknown x_axis parameter: {x_axis}")
     if y_axis not in param_lookup:
@@ -208,6 +208,7 @@ def _build_xy_scatter(
                         f"{param_lookup[y_axis].label}: %{{y:.2f}}%<extra></extra>"
                     ),
                 )
+
             )
 
     x_label = escape_plot_text(f"{param_lookup[x_axis].label}  (% of control)")
@@ -240,11 +241,11 @@ def _build_xy_scatter(
 def _condition_sort_key(info) -> tuple[int, str, str, float, str]:
     """Sort key for conditions: controls first, then by chemical and concentration."""
     from ntx.analysis.dtos import ConditionInfo
-    
+
     if not isinstance(info, ConditionInfo):
         # Fallback for conditions that don't have these attributes
         return (0, "", "", 0.0, str(info.label))
-    
+
     concentration = float(info.concentration) if info.concentration is not None else float("inf")
     sex_prefix = info.sex_prefix or ""
     return (0 if info.is_control else 1, sex_prefix, info.chemical, concentration, info.label)

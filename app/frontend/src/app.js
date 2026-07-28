@@ -28,6 +28,7 @@ function projectReport(options = {}) {
     plot: typeof options.plot === "string" ? options.plot : "", // Current plot key.
     experiments: Array.isArray(options.experiments) ? options.experiments : [], // Experiment options for selector
     selectedExperiment: null, // Selected experiment id
+    outlierMethod: typeof options.outlierMethod === "string" ? options.outlierMethod : "",
     availableParams: [], // Parameter options returned by the report API.
     defaultSelectedParams: [], // Backend-provided default parameter keys.
     selectedParams: [], // Active parameter keys used for rendering.
@@ -109,6 +110,7 @@ function projectReport(options = {}) {
       if (!this.normalizePlot()) {
         return;
       }
+
       // Load the report once the component initializes.
       this.load();
     },
@@ -191,6 +193,7 @@ function projectReport(options = {}) {
       if (this.paramSelectionMode === "xy_axes" && this.selectedExperiment) {
         url.searchParams.set("experiment", String(this.selectedExperiment));
       }
+      url.searchParams.set("outlier_method", this.outlierMethod);
       return url;
     },
 

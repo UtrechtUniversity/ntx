@@ -21,9 +21,10 @@ class PlotlyBuildContext:
     y_axis: str | None = None
     selected_wells: list[str] | None = None
 
+
 class ParamSelectionMode(str, Enum):
-    MULTIPLE = "multiple"      # Checkboxes (current)
-    XY_AXES = "xy_axes"        # X/Y dropdowns (scatter)
+    MULTIPLE = "multiple"  # Checkboxes (current)
+    XY_AXES = "xy_axes"  # X/Y dropdowns (scatter)
 
 
 # Registry entry describing a plot type and how to build its cards.
