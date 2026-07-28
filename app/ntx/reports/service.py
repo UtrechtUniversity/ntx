@@ -3,9 +3,8 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 from typing import Any
-
-from ntx.analysis.pipeline import run_experiment_analysis
-from ntx.models import Experiment, Project
+from ntx.analysis.pipeline import _condition_display_label, run_experiment_analysis
+from ntx.models import OutlierMethod,Experiment, Project
 from ntx.reports.plotly.builders import PlotlyBuildContext, select_plot_builders
 from ntx.reports.plotly.contracts import (
     PlotlyCard,
@@ -37,6 +36,9 @@ def build_project_report_payload(
     x_axis: str | None = None,
     y_axis: str | None = None,
     experiment: int | None = None,
+    selected_wells: list[str] | None = None,
+    outlier_method: str | OutlierMethod | None = None,
+
 ) -> dict[str, Any]:
     """
     Build a Plotly-first report payload for a project.
@@ -45,9 +47,12 @@ def build_project_report_payload(
     - Cards wrap fully-formed Plotly figure JSON.
     - For scatter plots: x_axis and y_axis parameters are used.
     - For other plots: params (multiple selection) are used.
+    - selected_wells: list of well keys for multi-well aggregation (empty = all wells means).
     """
     # Build the list of available experiments for the project to populate the UI.
-    experiments_qs = list(project.experiments.all())
+    experiments_qs = list(
+        project.experiments.prefetch_related("conditions").all()
+    )
     available_experiments = [
         {"id": exp.id, "label": f"{exp.code} ({exp.pk})"} for exp in experiments_qs
     ]
@@ -58,7 +63,8 @@ def build_project_report_payload(
     else:
         experiment_ids = [exp.id for exp in experiments_qs]
 
-    result = run_experiment_analysis(experiment_ids)
+    selected_outlier_method = OutlierMethod(outlier_method or project.outlier_method)
+    result = run_experiment_analysis(experiment_ids, outlier_method=selected_outlier_method)
 
     cards: list[PlotlyCard] = []
 
@@ -80,8 +86,21 @@ def build_project_report_payload(
     param_selection_mode = builders[0].param_selection_mode.value if builders else "multiple"
 
     # Create context with appropriate parameters
+    normalized_selected_wells = None
     if param_selection_mode == "xy_axes":
-        context = PlotlyBuildContext(x_axis=x_axis, y_axis=y_axis)
+        # normalized_selected_wells = None
+        if selected_wells:
+            normalized_selected_wells = [well.strip() for well in selected_wells 
+                                        if well and well.strip()]
+            normalized_selected_wells = list(dict.fromkeys(normalized_selected_wells))
+            if not normalized_selected_wells:
+                normalized_selected_wells = None
+
+        context = PlotlyBuildContext(
+            x_axis=x_axis,
+            y_axis=y_axis,
+            selected_wells=normalized_selected_wells,
+        )
     else:
         context = PlotlyBuildContext(params=selected_params)
 
@@ -99,6 +118,8 @@ def build_project_report_payload(
         y_axis=y_axis,
         available_experiments=available_experiments,
         selected_experiment=int(experiment) if experiment is not None else None,
+        available_wells=_build_available_wells(experiments_qs, experiment),
+        selected_wells=normalized_selected_wells if param_selection_mode == "xy_axes" else None,
     )
     return payload.model_dump(mode="json", exclude_none=True)
 
@@ -140,3 +161,27 @@ def _normalize_param_keys(params: Sequence[str] | None) -> list[str]:
         seen.add(key)
         normalized.append(key)
     return normalized
+
+
+def _build_available_wells(
+    experiments: Sequence[Experiment], selected_experiment_id: int | None
+) -> list[dict[str, object]]:
+    experiment = None
+    if selected_experiment_id is not None:
+        experiment = next((exp for exp in experiments if exp.id == selected_experiment_id), None)
+    if experiment is None and experiments:
+        experiment = experiments[0]
+    if experiment is None:
+        return []
+
+    available_wells: list[dict[str, object]] = []
+    for condition in experiment.conditions.all():
+        condition_label = _condition_display_label(condition)
+        for well in condition.wells:
+            available_wells.append(
+                {
+                    "key": well,
+                    "label": f"{well} ({condition_label})",
+                }
+            )
+    return available_wells
