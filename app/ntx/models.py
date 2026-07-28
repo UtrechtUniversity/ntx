@@ -310,7 +310,7 @@ class ExperimentFile(TimeStampedModel):
         ordering = ["experiment_id", "id"]
 
     def __str__(self) -> str:
-        return self.file.name
+        return str(self.file)
 
 
 class Condition(TimeStampedModel):
