@@ -2,140 +2,138 @@
 #    uv pip compile requirements/dev.in --universal --output-file requirements/dev.txt
 annotated-types==0.8.0
     # via
-    #   -c requirements/base.txt
+    #   -c base.txt
     #   pydantic
 asgiref==3.12.1
     # via
-    #   -c requirements/base.txt
+    #   -c base.txt
     #   django
-colorama==0.4.6 ; sys_platform == 'win32'
-    # via pytest
 dj-database-url==3.1.2
     # via
-    #   -c requirements/base.txt
-    #   -r requirements/base.in
-django==5.2.16
+    #   -c base.txt
+    #   -r base.in
+django==5.2.15
     # via
-    #   -c requirements/base.txt
-    #   -r requirements/base.in
+    #   -c base.txt
+    #   -r base.in
     #   dj-database-url
     #   django-stubs
     #   django-stubs-ext
 django-environ==0.14.0
     # via
-    #   -c requirements/base.txt
-    #   -r requirements/base.in
+    #   -c base.txt
+    #   -r base.in
 django-stubs==6.0.7
-    # via -r requirements/dev.in
+    # via -r dev.in
 django-stubs-ext==6.0.7
     # via django-stubs
 et-xmlfile==2.0.0
     # via
-    #   -c requirements/base.txt
+    #   -c base.txt
     #   openpyxl
 iniconfig==2.3.0
     # via pytest
 narwhals==2.24.0
     # via
-    #   -c requirements/base.txt
+    #   -c base.txt
     #   plotly
 nodeenv==1.10.0
     # via pyright
 numpy==2.5.1
     # via
-    #   -c requirements/base.txt
-    #   -r requirements/base.in
+    #   -c base.txt
+    #   -r base.in
     #   pandas
     #   patsy
     #   scipy
     #   statsmodels
 openpyxl==3.1.5
     # via
-    #   -c requirements/base.txt
-    #   -r requirements/base.in
+    #   -c base.txt
+    #   -r base.in
 packaging==26.2
     # via
-    #   -c requirements/base.txt
+    #   -c base.txt
     #   plotly
     #   pytest
     #   statsmodels
 pandas==2.3.3
     # via
-    #   -c requirements/base.txt
-    #   -r requirements/base.in
+    #   -c base.txt
+    #   -r base.in
     #   statsmodels
 patsy==1.0.2
     # via
-    #   -c requirements/base.txt
+    #   -c base.txt
     #   statsmodels
 plotly==6.9.0
     # via
-    #   -c requirements/base.txt
-    #   -r requirements/base.in
+    #   -c base.txt
+    #   -r base.in
 pluggy==1.6.0
     # via pytest
 polars==1.43.1
     # via
-    #   -c requirements/base.txt
-    #   -r requirements/base.in
+    #   -c base.txt
+    #   -r base.in
 polars-runtime-32==1.43.1
     # via
-    #   -c requirements/base.txt
+    #   -c base.txt
     #   polars
-psycopg==3.3.4
-    # via -r requirements/dev.in
-psycopg-binary==3.3.4 ; implementation_name != 'pypy'
+psycopg[binary]==3.3.4
+    # via -r dev.in
+psycopg-binary==3.3.4
     # via psycopg
 pydantic==2.13.4
     # via
-    #   -c requirements/base.txt
-    #   -r requirements/base.in
+    #   -c base.txt
+    #   -r base.in
 pydantic-core==2.46.4
     # via
-    #   -c requirements/base.txt
+    #   -c base.txt
     #   pydantic
 pygments==2.20.0
     # via pytest
 pyright==1.1.411
-    # via -r requirements/dev.in
+    # via -r dev.in
 pytest==9.1.1
     # via
-    #   -r requirements/dev.in
+    #   -r dev.in
     #   pytest-django
 pytest-django==4.12.0
-    # via -r requirements/dev.in
+    # via -r dev.in
 python-dateutil==2.9.0.post0
     # via
-    #   -c requirements/base.txt
+    #   -c base.txt
     #   pandas
 pytz==2026.3.post1
     # via
-    #   -c requirements/base.txt
+    #   -c base.txt
     #   pandas
 ruff==0.16.0
-    # via -r requirements/dev.in
+    # via -r dev.in
 scipy==1.18.0
     # via
-    #   -c requirements/base.txt
-    #   -r requirements/base.in
+    #   -c base.txt
+    #   -r base.in
     #   statsmodels
 six==1.17.0
     # via
-    #   -c requirements/base.txt
+    #   -c base.txt
     #   python-dateutil
 sqlparse==0.5.5
     # via
-    #   -c requirements/base.txt
+    #   -c base.txt
     #   django
 statsmodels==0.14.6
     # via
-    #   -c requirements/base.txt
-    #   -r requirements/base.in
+    #   -c base.txt
+    #   -r base.in
 types-pyyaml==6.0.12.20260724
     # via django-stubs
 typing-extensions==4.16.0
     # via
-    #   -c requirements/base.txt
+    #   -c base.txt
     #   django-stubs
     #   django-stubs-ext
     #   pydantic
@@ -144,11 +142,9 @@ typing-extensions==4.16.0
     #   typing-inspection
 typing-inspection==0.4.2
     # via
-    #   -c requirements/base.txt
+    #   -c base.txt
     #   pydantic
 tzdata==2026.3
     # via
-    #   -c requirements/base.txt
-    #   django
+    #   -c base.txt
     #   pandas
-    #   psycopg
