@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from django.db.models import Count, Prefetch
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.views.decorators.http import require_GET
 
@@ -9,7 +9,7 @@ from .analysis.pipeline import AnalysisPipelineError
 from .models import Condition, Experiment, Project
 from .reports.plotly.builders import build_plot_options
 from .reports.service import build_project_report_payload
-from django.http import HttpResponse
+
 
 def health_check(request):
     return HttpResponse("ok", content_type="text/plain")
@@ -73,6 +73,22 @@ def project_report_api(request, slug: str):
     experiment_param = request.GET.get("experiment")
     experiment_id = int(experiment_param) if experiment_param and experiment_param.strip() else None
 
+    # Support plural `wells` query param (comma-separated or multiple params)
+    wells_input = request.GET.getlist("wells")
+    selected_wells: list[str] | None = None
+    if len(wells_input) == 1:
+        parsed = [item.strip() for item in wells_input[0].split(",") if item.strip()]
+    elif wells_input:
+        parsed = [item.strip() for item in wells_input if item.strip()]
+    else:
+        parsed = []
+
+    if parsed:
+        selected_wells = list(dict.fromkeys(parsed))
+    else:
+        single = request.GET.get("well", "").strip() or None
+        selected_wells = [single] if single else None
+
     try:
         payload = build_project_report_payload(
             project,
@@ -81,6 +97,7 @@ def project_report_api(request, slug: str):
             x_axis=x_axis,
             y_axis=y_axis,
             experiment=experiment_id,
+            selected_wells=selected_wells,
         )
     except (AnalysisPipelineError, ValueError) as exc:
         return JsonResponse({"error": str(exc)}, status=400)

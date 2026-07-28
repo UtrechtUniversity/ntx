@@ -34,6 +34,8 @@ function projectReport(options = {}) {
     paramSelectionMode: "multiple", // Mode for parameter selection (multiple or xy_axes).
     xAxis: "", // Selected X-axis parameter for scatter plot.
     yAxis: "", // Selected Y-axis parameter for scatter plot.
+    selectedWells: [], // Selected wells for scatter plot (empty = all wells, single/multiple = subset).
+    availableWells: [], // Well options for the selected experiment.
     xAxisSearch: "", // Search text for X-axis dropdown.
     yAxisSearch: "", // Search text for Y-axis dropdown.
     cards: [], // Plot card data returned by the API.
@@ -166,12 +168,15 @@ function projectReport(options = {}) {
       const url = new URL(this.apiUrl, window.location.origin);
       
       if (this.paramSelectionMode === "xy_axes") {
-        // For scatter plot, use x_axis and y_axis parameters.
+        // For scatter plot, use x_axis, y_axis and optional well parameters.
         if (this.xAxis) {
           url.searchParams.set("x_axis", this.xAxis);
         }
         if (this.yAxis) {
           url.searchParams.set("y_axis", this.yAxis);
+        }
+        if (this.selectedWells.length > 0) {
+          url.searchParams.set("wells", this.selectedWells.join(","));
         }
       } else {
         // For multiple selection mode, use params.
@@ -207,11 +212,17 @@ function projectReport(options = {}) {
       }
       // Experiments metadata
       this.experiments = Array.isArray(payload.available_experiments) ? payload.available_experiments : this.experiments;
+      this.availableWells = Array.isArray(payload.available_wells) ? payload.available_wells : [];
       if (payload.selected_experiment) {
         this.selectedExperiment = payload.selected_experiment;
       } else if (!this.selectedExperiment && this.experiments.length > 0) {
         // Default to first experiment if none selected
         this.selectedExperiment = this.experiments[0].id;
+      }
+      if (Array.isArray(payload.selected_wells)) {
+        this.selectedWells = payload.selected_wells;
+      } else if (!this.selectedWells) {
+        this.selectedWells = [];
       }
     },
 

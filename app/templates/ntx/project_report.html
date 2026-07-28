@@ -73,12 +73,67 @@
               <select
                 class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
                 x-model.number="selectedExperiment"
-                @change="load()"
+                @change="selectedWells = []; load()"
               >
                 <template x-for="exp in experiments" :key="exp.id">
                   <option :value="exp.id" x-text="exp.label"></option>
                 </template>
               </select>
+            </div>
+          </div>
+          <div class="mt-2" x-show="activePlot && activePlot.param_selection_mode === 'xy_axes'">
+            <label class="text-sm text-slate-600">Wells</label>
+            <div class="mt-1 p-3 border border-slate-300 rounded-md bg-white">
+              <div class="flex items-center gap-2 mb-2">
+                <input
+                  type="checkbox"
+                  id="all-wells-checkbox"
+                  :checked="selectedWells.length === 0"
+                  @change="selectedWells = []; load()"
+                  class="rounded"
+                />
+                <label for="all-wells-checkbox" class="text-sm font-medium cursor-pointer">
+                  All wells (condition means)
+                </label>
+              </div>
+              <div class="border-t border-slate-200 pt-2">
+                <label class="sr-only">Wells multi-select</label>
+                <select
+                  multiple
+                  size="6"
+                  x-model="selectedWells"
+                  @change="load()"
+                  class="w-full rounded-md border border-slate-300 px-2 py-1 text-sm bg-white"
+                >
+                  <template x-for="well in availableWells" :key="well.key">
+                    <option :value="well.key" x-text="well.label"></option>
+                  </template>
+                </select>
+
+                <div class="mt-2 flex gap-2">
+                  <button
+                    type="button"
+                    class="rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-700 hover:bg-slate-50"
+                    @click="selectedWells = []; load()"
+                  >
+                    All wells (condition means)
+                  </button>
+                  <button
+                    type="button"
+                    class="rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-700 hover:bg-slate-50"
+                    @click="selectedWells = availableWells.map(w => w.key); load()"
+                  >
+                    Select all
+                  </button>
+                  <button
+                    type="button"
+                    class="rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-700 hover:bg-slate-50"
+                    @click="selectedWells = [];"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
