@@ -51,3 +51,5 @@ class ProjectReportPayload(BaseModel):
     # Experiments available for this project-level report
     available_experiments: list[dict[str, object]] = Field(default_factory=list)
     selected_experiment: int | None = None
+    available_wells: list[dict[str, object]] = Field(default_factory=list)
+    selected_wells: list[str] | None = None

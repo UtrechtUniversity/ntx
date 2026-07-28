@@ -19,6 +19,7 @@ class PlotlyBuildContext:
     params: Sequence[str] | None = None
     x_axis: str | None = None
     y_axis: str | None = None
+    selected_wells: list[str] | None = None
 
 
 class ParamSelectionMode(str, Enum):
@@ -49,10 +50,15 @@ def _build_heatmap(result: AnalysisPipelineResult, ctx: PlotlyBuildContext) -> l
 
 
 def _build_scatter(result: AnalysisPipelineResult, ctx: PlotlyBuildContext) -> list[PlotlyCard]:
-    # Build scatter plot with x_axis and y_axis parameters.
+    # Build scatter plot with x_axis, y_axis parameters, and optional well selection.
     if not ctx.x_axis or not ctx.y_axis:
         raise ValueError("Scatter plot requires both x_axis and y_axis parameters")
-    return build_correlation_scatter_card(result, x_axis=ctx.x_axis, y_axis=ctx.y_axis)
+    return build_correlation_scatter_card(
+        result,
+        x_axis=ctx.x_axis,
+        y_axis=ctx.y_axis,
+        selected_wells=ctx.selected_wells,
+    )
 
 
 def _build_concentration_response(
