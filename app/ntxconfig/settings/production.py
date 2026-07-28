@@ -24,7 +24,7 @@ def env_bool(name: str, *, default: bool) -> bool:
     if normalized in {"0", "false", "no"}:
         return False
     raise ImproperlyConfigured(f"{name} must be a boolean")
-
+    
 SECRET_KEY = require_env("DJANGO_SECRET_KEY")
 DEBUG = env_bool("DJANGO_DEBUG", default=False)
 ALLOWED_HOSTS = [host.strip() for host in require_env("ALLOWED_HOSTS").split(",") if host.strip()]
@@ -47,7 +47,8 @@ DATABASES = {
 }
 
 STATIC_ROOT = BASE_DIR / "staticfiles"  # noqa: F405
-
+CSRF_TRUSTED_ORIGINS = ["https://app.ntx.uu.nl"]
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 MIDDLEWARE = [  # noqa: F405
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
