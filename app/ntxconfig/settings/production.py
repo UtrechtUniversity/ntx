@@ -25,6 +25,7 @@ def env_bool(name: str, *, default: bool) -> bool:
         return False
     raise ImproperlyConfigured(f"{name} must be a boolean")
 
+
 SECRET_KEY = require_env("DJANGO_SECRET_KEY")
 DEBUG = env_bool("DJANGO_DEBUG", default=False)
 ALLOWED_HOSTS = [host.strip() for host in require_env("ALLOWED_HOSTS").split(",") if host.strip()]

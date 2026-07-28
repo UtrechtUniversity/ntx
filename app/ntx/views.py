@@ -30,8 +30,7 @@ def project_report(request, slug: str):
     project = get_object_or_404(Project, slug=slug)
     plot_options = build_plot_options()
     experiments = [
-        {"id": exp.id, "label": f"{exp.code} ({exp.pk})"}
-        for exp in project.experiments.all()
+        {"id": exp.id, "label": f"{exp.code} ({exp.pk})"} for exp in project.experiments.all()
     ]
     return render(
         request,

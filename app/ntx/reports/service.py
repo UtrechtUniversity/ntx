@@ -104,6 +104,7 @@ def build_project_report_payload(
     )
     return payload.model_dump(mode="json", exclude_none=True)
 
+
 def _resolve_selected_params(
     *,
     requested_params: Sequence[str] | None,
