@@ -29,7 +29,7 @@ Useful pages:
     - Experiment ingests:
       - Click on Add, for uploading new experiments
       - Parse or reparse selected uploads
-      - Promote selected ingests to experiments
+      - Promote selected ingests with confirmed metadata to experiments
       - Promote selected ingests and replace existing experiments when needed
       - Download edited metadata as a JSON file for uploading to Yoda
     - Experiments:
