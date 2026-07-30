@@ -23,17 +23,18 @@ Useful pages:
 
 - [Admin panel](#admin-actions): `/admin/`
   -  Use a superuser account to access the Django admin panel
-  - Project records can be viewed and edited.
-  - The project-level outlier method can be changed.
-  - Experiment and ingest records can be inspected.
+  - Project records can be viewed and edited
+  - The project-level outlier method can be changed
+  - Experiment and ingest records can be inspected
     - Experiment ingests:
-      - Parse or reparse selected uploads.
-      - Promote selected ingests to experiments.
-      - Promote selected ingests and replace existing experiments when needed.
-      - Download edited metadata as a JSON file, if this action is available.
+      - Click on Add, for uploading new experiments
+      - Parse or reparse selected uploads
+      - Promote selected ingests to experiments
+      - Promote selected ingests and replace existing experiments when needed
+      - Download edited metadata as a JSON file for uploading to Yoda
     - Experiments:
-      - Inspect promoted experiment records.
-      - Check linked projects, conditions, files, and metrics.
+      - Inspect promoted experiment records
+      - Check linked projects, conditions, files, and metrics
 
 
 
