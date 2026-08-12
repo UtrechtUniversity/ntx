@@ -87,6 +87,8 @@ def project_report_api(request, slug: str):
         single = request.GET.get("well", "").strip() or None
         selected_wells = [single] if single else None
 
+    selected_wells_mode = request.GET.get("selected_wells_mode", "").strip() or None
+
     try:
         payload = build_project_report_payload(
             project,
@@ -95,9 +97,9 @@ def project_report_api(request, slug: str):
             x_axis=x_axis,
             y_axis=y_axis,
             experiment=experiment_id,
-            outlier_method=outlier_method,
             selected_wells=selected_wells,
-
+            selected_wells_mode=selected_wells_mode,
+            outlier_method=outlier_method,
         )
     except (AnalysisPipelineError, ValueError) as exc:
         return JsonResponse({"error": str(exc)}, status=400)

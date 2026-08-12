@@ -108,18 +108,6 @@
           <div class="mt-2" x-show="activePlot && activePlot.param_selection_mode === 'xy_axes'">
             <label class="text-sm text-slate-600">Wells</label>
             <div class="mt-1 p-3 border border-slate-300 rounded-md bg-white">
-              <div class="flex items-center gap-2 mb-2">
-                <input
-                  type="checkbox"
-                  id="all-wells-checkbox"
-                  :checked="selectedWells.length === 0"
-                  @change="selectedWells = []; load()"
-                  class="rounded"
-                />
-                <label for="all-wells-checkbox" class="text-sm font-medium cursor-pointer">
-                  All wells (condition means)
-                </label>
-              </div>
               <div class="border-t border-slate-200 pt-2">
                 <label class="sr-only">Wells multi-select</label>
                 <select
@@ -138,13 +126,6 @@
                   <button
                     type="button"
                     class="rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-700 hover:bg-slate-50"
-                    @click="selectedWells = []; load()"
-                  >
-                    All wells (condition means)
-                  </button>
-                  <button
-                    type="button"
-                    class="rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-700 hover:bg-slate-50"
                     @click="selectedWells = availableWells.map(w => w.key); load()"
                   >
                     Select all
@@ -152,10 +133,39 @@
                   <button
                     type="button"
                     class="rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-700 hover:bg-slate-50"
-                    @click="selectedWells = [];"
+                    @click="selectedWells = []; load()"
                   >
                     Clear
                   </button>
+                </div>
+                <div class="mt-3">
+                  <label class="text-sm text-slate-600">Multi-well display</label>
+                  <div class="mt-2 flex flex-wrap items-center gap-3 text-sm">
+                      <label class="inline-flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="selected-wells-mode"
+                          value="mean"
+                          x-model="selectedWellsMode"
+                          @change="load()"
+                          :disabled="selectedWells.length === 0"
+                          class="rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+                        />
+                        Mean per condition
+                      </label>
+                      <label class="inline-flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="selected-wells-mode"
+                          value="individual"
+                          x-model="selectedWellsMode"
+                          @change="load()"
+                          :disabled="selectedWells.length === 0"
+                          class="rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+                        />
+                        Individual wells
+                      </label>
+                  </div>
                 </div>
               </div>
             </div>

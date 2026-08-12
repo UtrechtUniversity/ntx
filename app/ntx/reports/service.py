@@ -5,6 +5,7 @@ from collections.abc import Sequence
 from typing import Any
 from ntx.analysis.pipeline import _condition_display_label, run_experiment_analysis
 from ntx.models import OutlierMethod, Experiment, Project
+
 from ntx.reports.plotly.builders import PlotlyBuildContext, select_plot_builders
 from ntx.reports.plotly.contracts import (
     PlotlyCard,
@@ -36,9 +37,9 @@ def build_project_report_payload(
     x_axis: str | None = None,
     y_axis: str | None = None,
     experiment: int | None = None,
-    outlier_method: str | OutlierMethod | None = None,
     selected_wells: list[str] | None = None,
-
+    selected_wells_mode: str | None = None,
+    outlier_method: str | OutlierMethod | None = None,
 ) -> dict[str, Any]:
     """
     Build a Plotly-first report payload for a project.
@@ -48,6 +49,7 @@ def build_project_report_payload(
     - For scatter plots: x_axis and y_axis parameters are used.
     - For other plots: params (multiple selection) are used.
     - selected_wells: list of well keys for multi-well aggregation (empty = all wells means).
+    - selected_wells_mode: 'mean' or 'individual' for multi-well scatter display.
     """
     # Build the list of available experiments for the project to populate the UI.
     experiments_qs = list(
@@ -87,8 +89,8 @@ def build_project_report_payload(
 
     # Create context with appropriate parameters
     normalized_selected_wells = None
+    normalized_selected_wells_mode = None
     if param_selection_mode == "xy_axes":
-        # normalized_selected_wells = None
         if selected_wells:
             normalized_selected_wells = [well.strip() for well in selected_wells 
                                         if well and well.strip()]
@@ -96,10 +98,17 @@ def build_project_report_payload(
             if not normalized_selected_wells:
                 normalized_selected_wells = None
 
+        normalized_selected_wells_mode = (
+            selected_wells_mode.strip().lower() if selected_wells_mode else None
+        )
+        if normalized_selected_wells_mode not in {"mean", "individual"}:
+            normalized_selected_wells_mode = None
+
         context = PlotlyBuildContext(
             x_axis=x_axis,
             y_axis=y_axis,
             selected_wells=normalized_selected_wells,
+            selected_wells_mode=normalized_selected_wells_mode,
         )
     else:
         context = PlotlyBuildContext(params=selected_params)
@@ -120,9 +129,9 @@ def build_project_report_payload(
         selected_experiment=int(experiment) if experiment is not None else None,
         available_wells=_build_available_wells(experiments_qs, experiment),
         selected_wells=normalized_selected_wells if param_selection_mode == "xy_axes" else None,
+        selected_wells_mode=normalized_selected_wells_mode if param_selection_mode == "xy_axes" else None,
     )
     return payload.model_dump(mode="json", exclude_none=True)
-
 
 def _resolve_selected_params(
     *,

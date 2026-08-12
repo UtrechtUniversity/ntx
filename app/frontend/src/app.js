@@ -36,6 +36,7 @@ function projectReport(options = {}) {
     xAxis: "", // Selected X-axis parameter for scatter plot.
     yAxis: "", // Selected Y-axis parameter for scatter plot.
     selectedWells: [], // Selected wells for scatter plot (empty = all wells, single/multiple = subset).
+    selectedWellsMode: "mean", // Display mode for multi-well scatter points.
     availableWells: [], // Well options for the selected experiment.
     xAxisSearch: "", // Search text for X-axis dropdown.
     yAxisSearch: "", // Search text for Y-axis dropdown.
@@ -180,6 +181,9 @@ function projectReport(options = {}) {
         if (this.selectedWells.length > 0) {
           url.searchParams.set("wells", this.selectedWells.join(","));
         }
+        if (this.selectedWellsMode) {
+          url.searchParams.set("selected_wells_mode", this.selectedWellsMode);
+        }
       } else {
         // For multiple selection mode, use params.
         if (this.selectedParams.length > 0) {
@@ -227,6 +231,7 @@ function projectReport(options = {}) {
       } else if (!this.selectedWells) {
         this.selectedWells = [];
       }
+      this.selectedWellsMode = payload.selected_wells_mode || "mean";
     },
 
     async load() {
