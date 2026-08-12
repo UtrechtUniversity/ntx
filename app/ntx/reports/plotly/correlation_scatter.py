@@ -16,13 +16,15 @@ def build_correlation_scatter_card(
     x_axis: str,
     y_axis: str,
     selected_wells: list[str] | None = None,
+    selected_wells_mode: str | None = None,
 ) -> list[PlotlyCard]:
     """Build scatter plot comparing two parameters across all conditions, one well, or multiple 
     wells.
     
     - No selected_wells (empty list/None): Show means for all conditions (all wells aggregated)
     - Single well: Show that well's actual values as a single point per condition
-    - Multiple wells: Show mean values calculated from the subset of wells
+    - Multiple wells: Show mean values calculated from the subset of wells when selected_wells_mode == 'mean'
+    - Multiple wells: Show individual well values when selected_wells_mode == 'individual'
     """
     if not result.labels.params:
         return []
@@ -34,7 +36,7 @@ def build_correlation_scatter_card(
     if y_axis not in param_lookup:
         raise ValueError(f"Unknown y_axis parameter: {y_axis}")
 
-    fig = _build_xy_scatter(result, x_axis, y_axis, param_lookup, selected_wells)
+    fig = _build_xy_scatter(result, x_axis, y_axis, param_lookup, selected_wells, selected_wells_mode)
     figure_json = serialize_figure(fig)
 
     meta = {
@@ -46,10 +48,30 @@ def build_correlation_scatter_card(
     if selected_wells:
         meta["selected_wells"] = selected_wells
 
+    # Determine whether to display averaged labels in the title.
+    def _strip_avg(label: str) -> str:
+        import re
+
+        # Remove common ' - Avg' suffixes (with optional units) and bare 'Avg' tokens.
+        label = re.sub(r"\s*-\s*Avg(\s*\([^)]*\))?", "", label)
+        label = re.sub(r"\bAvg\b", "", label)
+        return label.strip()
+
+    # Show averages when no wells are explicitly selected (All wells), or when
+    # multiple wells are selected and the mode is not 'individual'.
+    show_avg = False
+    if not selected_wells:
+        show_avg = True
+    elif isinstance(selected_wells, (list, tuple)) and len(selected_wells) > 1:
+        show_avg = (selected_wells_mode or "mean") != "individual"
+
+    x_label = param_lookup[x_axis].label if show_avg else _strip_avg(param_lookup[x_axis].label)
+    y_label = param_lookup[y_axis].label if show_avg else _strip_avg(param_lookup[y_axis].label)
+
     return [
         PlotlyCard(
             id="scatter:xy_comparison",
-            title=f"{param_lookup[x_axis].label} vs {param_lookup[y_axis].label}",
+            title=f"{x_label} vs {y_label}",
             figure=PlotlyFigure(**figure_json),
             config=dict(DEFAULT_PLOTLY_CONFIG),
             meta=meta,
@@ -63,6 +85,7 @@ def _build_xy_scatter(
     y_axis: str,
     param_lookup: dict,
     selected_wells: list[str] | None,
+    selected_wells_mode: str | None,
 ) -> go.Figure:
     """Create scatter plot with condition/chemical grouping, single well, or multi-well subset."""
     fig = go.Figure()
@@ -112,57 +135,74 @@ def _build_xy_scatter(
                 )
             )
     elif selected_wells and len(selected_wells) > 1:
-        # Multi-well selection: calculate mean for the subset of wells
         well_set = set(selected_wells)
-        # Group observations by condition and parameter
-        aggregates_by_condition: dict[str, dict[str, list[float]]] = {}
-        
+        # Group observations by condition, well, and parameter so individual points stay aligned.
+        observations_by_condition_and_well: dict[str, dict[str, dict[str, float]]] = {}
         for record in result.post_outlier:
             if record.div == 0 and record.well in well_set and record.value is not None:
-                if record.condition_label not in aggregates_by_condition:
-                    aggregates_by_condition[record.condition_label] = {}
-                if record.param not in aggregates_by_condition[record.condition_label]:
-                    aggregates_by_condition[record.condition_label][record.param] = []
-                aggregates_by_condition[record.condition_label][record.param].append(record.value)
-        
+                observations_by_condition_and_well.setdefault(record.condition_label, {}).setdefault(record.well, {})[record.param] = record.value
+
         colors = [
             "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
             "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"
         ]
-        
+
         conditions = sorted(result.labels.conditions, key=_condition_sort_key)
         for idx, condition in enumerate(conditions):
-            param_values = aggregates_by_condition.get(condition.label, {})
-            x_values = param_values.get(x_axis, [])
-            y_values = param_values.get(y_axis, [])
-            
-            # Calculate mean for the selected wells
-            x_mean = sum(x_values) / len(x_values) if x_values else None
-            y_mean = sum(y_values) / len(y_values) if y_values else None
-            
-            if x_mean is not None and y_mean is not None:
-                x_val = x_mean * 100
-                y_val = y_mean * 100
-                
-                fig.add_trace(
-                    go.Scatter(
-                        x=[x_val],
-                        y=[y_val],
-                        mode="markers",
-                        name=escape_plot_text(condition.label),
-                        marker=dict(
-                            size=10,
-                            color=colors[idx % len(colors)],
-                            opacity=0.7,
-                            line=dict(width=1, color="white"),
-                        ),
-                        hovertemplate=(
-                            f"<b>{escape_plot_text(condition.label)}</b> (multi-well mean)<br>"
-                            f"{param_lookup[x_axis].label}: %{{x:.2f}}%<br>"
-                            f"{param_lookup[y_axis].label}: %{{y:.2f}}%<extra></extra>"
-                        ),
+            wells_by_param = observations_by_condition_and_well.get(condition.label, {})
+
+            if selected_wells_mode == "individual":
+                # Show one trace per well observation for each condition.
+                for well, param_values in wells_by_param.items():
+                    x_val = param_values.get(x_axis)
+                    y_val = param_values.get(y_axis)
+                    if x_val is None or y_val is None:
+                        continue
+                    fig.add_trace(
+                        go.Scatter(
+                            x=[x_val * 100],
+                            y=[y_val * 100],
+                            mode="markers",
+                            name=escape_plot_text(f"{condition.label} / {well}"),
+                            marker=dict(
+                                size=8,
+                                color=colors[idx % len(colors)],
+                                opacity=0.6,
+                                line=dict(width=1, color="white"),
+                            ),
+                            hovertemplate=(
+                                f"<b>{escape_plot_text(condition.label)}</b> ({escape_plot_text(well)})<br>"
+                                f"{param_lookup[x_axis].label}: %{{x:.2f}}%<br>"
+                                f"{param_lookup[y_axis].label}: %{{y:.2f}}%<extra></extra>"
+                            ),
+                        )
                     )
-                )
+            else:
+                # Default behavior: mean across selected wells.
+                x_values = [params[x_axis] for params in wells_by_param.values() if x_axis in params]
+                y_values = [params[y_axis] for params in wells_by_param.values() if y_axis in params]
+                x_mean = sum(x_values) / len(x_values) if x_values else None
+                y_mean = sum(y_values) / len(y_values) if y_values else None
+                if x_mean is not None and y_mean is not None:
+                    fig.add_trace(
+                        go.Scatter(
+                            x=[x_mean * 100],
+                            y=[y_mean * 100],
+                            mode="markers",
+                            name=escape_plot_text(condition.label),
+                            marker=dict(
+                                size=10,
+                                color=colors[idx % len(colors)],
+                                opacity=0.7,
+                                line=dict(width=1, color="white"),
+                            ),
+                            hovertemplate=(
+                                f"<b>{escape_plot_text(condition.label)}</b> (multi-well mean)<br>"
+                                f"{param_lookup[x_axis].label}: %{{x:.2f}}%<br>"
+                                f"{param_lookup[y_axis].label}: %{{y:.2f}}%<extra></extra>"
+                            ),
+                        )
+                    )
     else:
         # No well selection: show all wells aggregated means per condition (original behavior)
         conditions = sorted(result.labels.conditions, key=_condition_sort_key)
@@ -211,8 +251,32 @@ def _build_xy_scatter(
 
             )
 
-    x_label = escape_plot_text(f"{param_lookup[x_axis].label}  (% of control)")
-    y_label = escape_plot_text(f"{param_lookup[y_axis].label} (% of control)")
+    # Determine whether to show averaged labels on axes.
+    def _strip_avg(label: str) -> str:
+        import re
+
+        label = re.sub(r"\s*-\s*Avg(\s*\([^)]*\))?", "", label)
+        label = re.sub(r"\bAvg\b", "", label)
+        return label.strip()
+
+    # Compute show_avg same way as in the card builder:
+    if isinstance(selected_wells, str):
+        sel = [selected_wells]
+    else:
+        sel = selected_wells or []
+
+    if not sel:
+        show_avg_axes = True
+    elif isinstance(sel, (list, tuple)) and len(sel) > 1:
+        show_avg_axes = (selected_wells_mode or "mean") != "individual"
+    else:
+        show_avg_axes = False
+
+    x_label_text = param_lookup[x_axis].label if show_avg_axes else _strip_avg(param_lookup[x_axis].label)
+    y_label_text = param_lookup[y_axis].label if show_avg_axes else _strip_avg(param_lookup[y_axis].label)
+
+    x_label = escape_plot_text(f"{x_label_text} (% of control)")
+    y_label = escape_plot_text(f"{y_label_text} (% of control)")
 
     fig.update_layout(
         xaxis=dict(

@@ -17,6 +17,7 @@ from .models import (
     Project,
 )
 from .reports.plotly.activity_comparison import build_activity_comparison_cards
+from .reports.plotly.correlation_scatter import build_correlation_scatter_card
 from .reports.service import build_project_report_payload
 
 pytestmark = pytest.mark.django_db
@@ -372,3 +373,252 @@ def test_project_report_api_returns_json(client):
     assert payload["cards"]
     assert payload["cards"][0]["type"] == "plotly"
     assert payload["cards"][0]["figure"]["data"]
+
+
+def test_build_correlation_scatter_plot_uses_selected_well_values():
+    project = Project.objects.create(name="Report Scatter Well Project")
+    unit = ConcentrationUnit.objects.create(name="uM", symbol="uM", slug="um")
+    chemical = Chemical.objects.create(name="ChemA")
+    control = Chemical.objects.create(name="DMSO")
+
+    experiment = Experiment.objects.create(
+        project=project,
+        code="EXP-SCATTER",
+        type=ExposureType.ACUTE,
+        default_concentration_unit=unit,
+    )
+    Condition.objects.create(
+        experiment=experiment,
+        name="Control",
+        chemical=control,
+        concentration=None,
+        unit=unit,
+        is_control=True,
+        wells=["A1", "A2"],
+    )
+    Condition.objects.create(
+        experiment=experiment,
+        name="0.1 uM",
+        chemical=chemical,
+        concentration="0.1",
+        unit=unit,
+        is_control=False,
+        wells=["A3", "A4"],
+    )
+
+    wells = ["A1", "A2", "A3", "A4"]
+    params = ["number_of_spikes", "isi_coefficient_of_variation"]
+    ratios = [
+        [1, 1, 2, 2],
+        [1, 1, 1.5, 1.5],
+    ]
+
+    NeuronalMetricsFrame.objects.create(
+        experiment=experiment,
+        div=0,
+        metrics_json=_metrics_payload(wells=wells, params=params, ratios=ratios),
+        qc_json=_qc_payload(wells=wells),
+    )
+
+    result = run_experiment_analysis([experiment.id])
+    cards = build_correlation_scatter_card(
+        result,
+        x_axis="number_of_spikes",
+        y_axis="isi_coefficient_of_variation",
+        selected_wells=["A3"],
+    )
+
+    assert len(cards) == 1
+    card = cards[0]
+    assert card.figure is not None
+    assert len(card.figure.data) == 1
+    trace = card.figure.data[0]
+    assert trace["x"][0] == pytest.approx(200.0)
+    assert trace["y"][0] == pytest.approx(150.0)
+    assert card.meta.get("selected_wells") == ["A3"]
+
+
+def test_project_report_payload_includes_available_wells_for_scatter():
+    project = Project.objects.create(name="Report Scatter Payload Project")
+    unit = ConcentrationUnit.objects.create(name="uM", symbol="uM", slug="um")
+    chemical = Chemical.objects.create(name="ChemA")
+    control = Chemical.objects.create(name="DMSO")
+
+    experiment = Experiment.objects.create(
+        project=project,
+        code="EXP-SCATTER-PAYLOAD",
+        type=ExposureType.ACUTE,
+        default_concentration_unit=unit,
+    )
+    Condition.objects.create(
+        experiment=experiment,
+        name="Control",
+        chemical=control,
+        concentration=None,
+        unit=unit,
+        is_control=True,
+        wells=["A1"],
+    )
+    Condition.objects.create(
+        experiment=experiment,
+        name="0.1 uM",
+        chemical=chemical,
+        concentration="0.1",
+        unit=unit,
+        is_control=False,
+        wells=["A2"],
+    )
+    NeuronalMetricsFrame.objects.create(
+        experiment=experiment,
+        div=0,
+        metrics_json=_metrics_payload(
+            wells=["A1", "A2"],
+            params=["number_of_spikes"],
+            ratios=[[1, 2]],
+        ),
+        qc_json=_qc_payload(wells=["A1", "A2"]),
+    )
+
+    payload = build_project_report_payload(
+        project,
+        plot="scatter",
+        x_axis="number_of_spikes",
+        y_axis="number_of_spikes",
+        experiment=experiment.id,
+    )
+
+    assert payload["available_wells"] == [{"key": "A1", "label": "A1 (DMSO (control))"}, {"key": "A2", "label": "A2 (ChemA 0.1 uM)"}]
+    assert payload.get("selected_wells") is None
+    assert payload.get("selected_wells_mode") is None
+
+
+def test_build_correlation_scatter_plot_uses_multi_well_individual_values():
+    project = Project.objects.create(name="Report Scatter Multi-Well Individual Project")
+    unit = ConcentrationUnit.objects.create(name="uM", symbol="uM", slug="um")
+    chemical = Chemical.objects.create(name="ChemA")
+    control = Chemical.objects.create(name="DMSO")
+
+    experiment = Experiment.objects.create(
+        project=project,
+        code="EXP-SCATTER-MULTI-INDIV",
+        type=ExposureType.ACUTE,
+        default_concentration_unit=unit,
+    )
+    Condition.objects.create(
+        experiment=experiment,
+        name="Control",
+        chemical=control,
+        concentration=None,
+        unit=unit,
+        is_control=True,
+        wells=["A1", "A2"],
+    )
+    Condition.objects.create(
+        experiment=experiment,
+        name="0.1 uM",
+        chemical=chemical,
+        concentration="0.1",
+        unit=unit,
+        is_control=False,
+        wells=["A3", "A4"],
+    )
+
+    wells = ["A1", "A2", "A3", "A4"]
+    params = ["number_of_spikes", "isi_coefficient_of_variation"]
+    ratios = [
+        [1, 1, 2, 4],
+        [1, 1, 1.5, 2.5],
+    ]
+
+    NeuronalMetricsFrame.objects.create(
+        experiment=experiment,
+        div=0,
+        metrics_json=_metrics_payload(wells=wells, params=params, ratios=ratios),
+        qc_json=_qc_payload(wells=wells),
+    )
+
+    result = run_experiment_analysis([experiment.id])
+    cards = build_correlation_scatter_card(
+        result,
+        x_axis="number_of_spikes",
+        y_axis="isi_coefficient_of_variation",
+        selected_wells=["A3", "A4"],
+        selected_wells_mode="individual",
+    )
+
+    assert len(cards) == 1
+    card = cards[0]
+    assert card.figure is not None
+    assert len(card.figure.data) == 2
+    x_values = [trace["x"][0] for trace in card.figure.data]
+    y_values = [trace["y"][0] for trace in card.figure.data]
+    assert sorted(x_values) == [pytest.approx(200.0), pytest.approx(400.0)]
+    assert sorted(y_values) == [pytest.approx(150.0), pytest.approx(250.0)]
+    assert card.meta.get("selected_wells") == ["A3", "A4"]
+
+
+def test_build_correlation_scatter_plot_uses_multi_well_mean_values():
+    """Test that multi-well selection calculates mean across the selected wells."""
+    project = Project.objects.create(name="Report Scatter Multi-Well Project")
+    unit = ConcentrationUnit.objects.create(name="uM", symbol="uM", slug="um")
+    chemical = Chemical.objects.create(name="ChemA")
+    control = Chemical.objects.create(name="DMSO")
+
+    experiment = Experiment.objects.create(
+        project=project,
+        code="EXP-SCATTER-MULTI",
+        type=ExposureType.ACUTE,
+        default_concentration_unit=unit,
+    )
+    Condition.objects.create(
+        experiment=experiment,
+        name="Control",
+        chemical=control,
+        concentration=None,
+        unit=unit,
+        is_control=True,
+        wells=["A1", "A2"],
+    )
+    Condition.objects.create(
+        experiment=experiment,
+        name="0.1 uM",
+        chemical=chemical,
+        concentration="0.1",
+        unit=unit,
+        is_control=False,
+        wells=["A3", "A4"],
+    )
+
+    # Create data where A3=200%, A4=400% for spikes, A3=150%, A4=250% for isi_coef
+    # Mean should be 300% for spikes, 200% for isi_coef
+    wells = ["A1", "A2", "A3", "A4"]
+    params = ["number_of_spikes", "isi_coefficient_of_variation"]
+    ratios = [
+        [1, 1, 2, 4],      # spikes: A1=100, A2=100, A3=200, A4=400
+        [1, 1, 1.5, 2.5],  # isi_coef: A1=100, A2=100, A3=150, A4=250
+    ]
+
+    NeuronalMetricsFrame.objects.create(
+        experiment=experiment,
+        div=0,
+        metrics_json=_metrics_payload(wells=wells, params=params, ratios=ratios),
+        qc_json=_qc_payload(wells=wells),
+    )
+
+    result = run_experiment_analysis([experiment.id])
+    cards = build_correlation_scatter_card(
+        result,
+        x_axis="number_of_spikes",
+        y_axis="isi_coefficient_of_variation",
+        selected_wells=["A3", "A4"],
+    )
+
+    assert len(cards) == 1
+    card = cards[0]
+    assert card.figure is not None
+    assert len(card.figure.data) == 1
+    trace = card.figure.data[0]
+    # Mean of [200, 400] = 300%, Mean of [150, 250] = 200%
+    assert trace["x"][0] == pytest.approx(300.0)
+    assert trace["y"][0] == pytest.approx(200.0)
+    assert card.meta.get("selected_wells") == ["A3", "A4"]

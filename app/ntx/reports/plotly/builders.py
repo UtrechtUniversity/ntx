@@ -20,6 +20,7 @@ class PlotlyBuildContext:
     x_axis: str | None = None
     y_axis: str | None = None
     selected_wells: list[str] | None = None
+    selected_wells_mode: str | None = None
 
 
 class ParamSelectionMode(str, Enum):
@@ -58,6 +59,7 @@ def _build_scatter(result: AnalysisPipelineResult, ctx: PlotlyBuildContext) -> l
         x_axis=ctx.x_axis,
         y_axis=ctx.y_axis,
         selected_wells=ctx.selected_wells,
+        selected_wells_mode=ctx.selected_wells_mode,
     )
 
 
