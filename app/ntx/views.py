@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from django.db.models import Count, Prefetch
-from django.http import HttpResponse, JsonResponse
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.views.decorators.http import require_GET
 
@@ -67,19 +67,13 @@ def project_report_api(request, slug: str):
     plot = request.GET.get("plot")
     outlier_method = request.GET.get("outlier_method")
 
-    # Optional experiment selection (single experiment id)
+    # Optional experiment selection (required for scatter plots).
     experiment_param = request.GET.get("experiment")
-    experiment_id = int(experiment_param) if experiment_param and experiment_param.strip() else None
 
     # Support plural `wells` query param (comma-separated or multiple params)
     wells_input = request.GET.getlist("wells")
     selected_wells: list[str] | None = None
-    if len(wells_input) == 1:
-        parsed = [item.strip() for item in wells_input[0].split(",") if item.strip()]
-    elif wells_input:
-        parsed = [item.strip() for item in wells_input if item.strip()]
-    else:
-        parsed = []
+    parsed = [token.strip() for item in wells_input for token in item.split(",") if token.strip()]
 
     if parsed:
         selected_wells = list(dict.fromkeys(parsed))
@@ -90,6 +84,9 @@ def project_report_api(request, slug: str):
     selected_wells_mode = request.GET.get("selected_wells_mode", "").strip() or None
 
     try:
+        experiment_id = (
+            int(experiment_param) if experiment_param and experiment_param.strip() else None
+        )
         payload = build_project_report_payload(
             project,
             plot=plot,

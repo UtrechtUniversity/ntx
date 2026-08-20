@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Callable, Sequence
+from typing import Callable, Literal, Sequence
 
 from ntx.analysis.dtos import AnalysisPipelineResult
 
@@ -20,7 +20,7 @@ class PlotlyBuildContext:
     x_axis: str | None = None
     y_axis: str | None = None
     selected_wells: list[str] | None = None
-    selected_wells_mode: str | None = None
+    selected_wells_mode: Literal["mean", "individual"] | None = None
 
 
 class ParamSelectionMode(str, Enum):

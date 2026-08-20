@@ -74,6 +74,9 @@
                   yAxis = '';
                   xAxisSearch = '';
                   yAxisSearch = '';
+                  selectedWells = [];
+                  availableWells = [];
+                  availableWellsExperiment = null;
                   if (option.param_selection_mode !== 'xy_axes') {
                     load();
                   }
@@ -97,7 +100,8 @@
               <select
                 class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
                 x-model.number="selectedExperiment"
-                @change="selectedWells = []; load()"
+                :disabled="loading || experiments.length === 0"
+                @change="experimentChanged()"
               >
                 <template x-for="exp in experiments" :key="exp.id">
                   <option :value="exp.id" x-text="exp.label"></option>
@@ -115,7 +119,8 @@
                   size="6"
                   x-model="selectedWells"
                   @change="load()"
-                  class="w-full rounded-md border border-slate-300 px-2 py-1 text-sm bg-white"
+                  :disabled="loading || !wellControlsReady"
+                  class="w-full rounded-md border border-slate-300 px-2 py-1 text-sm bg-white disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <template x-for="well in availableWells" :key="well.key">
                     <option :value="well.key" x-text="well.label"></option>
@@ -127,6 +132,7 @@
                     type="button"
                     class="rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-700 hover:bg-slate-50"
                     @click="selectedWells = availableWells.map(w => w.key); load()"
+                    :disabled="loading || !wellControlsReady || availableWells.length === 0"
                   >
                     Select all
                   </button>
@@ -134,6 +140,7 @@
                     type="button"
                     class="rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-700 hover:bg-slate-50"
                     @click="selectedWells = []; load()"
+                    :disabled="loading || !wellControlsReady"
                   >
                     Clear
                   </button>
@@ -148,7 +155,7 @@
                           value="mean"
                           x-model="selectedWellsMode"
                           @change="load()"
-                          :disabled="selectedWells.length === 0"
+                          :disabled="loading || !wellControlsReady || selectedWells.length === 0"
                           class="rounded border-slate-300 text-slate-900 focus:ring-slate-500"
                         />
                         Mean per condition
@@ -160,7 +167,7 @@
                           value="individual"
                           x-model="selectedWellsMode"
                           @change="load()"
-                          :disabled="selectedWells.length === 0"
+                          :disabled="loading || !wellControlsReady || selectedWells.length === 0"
                           class="rounded border-slate-300 text-slate-900 focus:ring-slate-500"
                         />
                         Individual wells
@@ -274,7 +281,7 @@
                       else { xAxisSearch = xAxis ? `${getParamLabel(xAxis)} (${getParamSection(xAxis)})` : ''; }
                     "
                     placeholder="Search or select parameter..."
-                    :disabled="loading"
+                    :disabled="loading || !selectedExperiment"
                   >
                   <datalist id="x-axis-options">
                     <template x-for="param in availableParams" :key="param.key">
@@ -300,7 +307,7 @@
                   else { yAxisSearch = yAxis ? `${getParamLabel(yAxis)} (${getParamSection(yAxis)})` : ''; }
                 "
                 placeholder="Search or select parameter..."
-                :disabled="loading"
+                :disabled="loading || !selectedExperiment"
               >
               <datalist id="y-axis-options">
                 <template x-for="param in availableParams" :key="param.key">
@@ -316,7 +323,7 @@
                 type="button"
                 class="rounded-md bg-slate-900 text-white px-3 py-2 text-sm hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
                 @click="applyXYAxes()"
-                :disabled="loading || !xAxis || !yAxis"
+                :disabled="loading || !selectedExperiment || !xAxis || !yAxis"
               >
                 Apply comparison
               </button>
