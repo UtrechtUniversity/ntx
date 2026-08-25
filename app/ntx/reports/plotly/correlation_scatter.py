@@ -36,7 +36,19 @@ def build_correlation_scatter_card(
     selected_wells: list[str] | None = None,
     selected_wells_mode: WellDisplayMode | None = None,
 ) -> list[PlotlyCard]:
-    """Compare two parameters for conditions in one analyzed experiment."""
+    """Build one scatter card comparing two parameters across conditions.
+
+    The analysis result is expected to contain one experiment. Only DIV 0 values are plotted,
+    as percentages of control:
+
+    - With no selected wells, use aggregate means across all wells.
+    - In "mean" mode (the default), average each axis's available selected-well values.
+    - In "individual" mode, plot paired x/y observations for each selected well.
+
+    Conditions without usable values for both axes are omitted; individual mode requires both
+    values to belong to the same condition and well. Return no cards when parameter metadata is
+    empty, and raise "ValueError" when either axis key is unknown.
+    """
     if not result.labels.params:
         return []
 

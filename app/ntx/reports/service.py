@@ -39,7 +39,18 @@ def build_project_report_payload(
     selected_wells_mode: str | None = None,
     outlier_method: str | OutlierMethod | None = None,
 ) -> dict[str, Any]:
-    """Build a Plotly report payload for a project."""
+    """Build and serialize a Plotly report payload for a project.
+
+    The payload contains fully formed Plotly card JSON and parameter-selection metadata. Scatter
+    reports use "x_axis" and "y_axis" and require one experiment belonging to the project.
+    Their well keys are normalized, deduplicated, and validated against that experiment, and
+    "selected_wells_mode" defaults to "mean". Scatter payloads also include the selected
+    experiment, its available wells, the normalized well selection, and the effective display mode.
+
+    Non-scatter reports use "params" and analyze either the selected project-owned experiment or
+    all experiments in the project when no experiment is selected. Invalid plot, experiment,
+    parameter, axis, well, display-mode, or outlier-method selections raise "ValueError".
+    """
     builders = select_plot_builders(plot)
     scatter_requested = any(builder.key == "scatter" for builder in builders)
     param_selection_mode = builders[0].param_selection_mode.value
