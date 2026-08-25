@@ -3,7 +3,6 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import pytest
-from django.db.models import Prefetch
 from django.urls import reverse
 
 from ntx.analysis.dtos import (
@@ -24,7 +23,6 @@ from ntx.models import (
     Project,
 )
 from ntx.reports.plotly.correlation_scatter import build_correlation_scatter_card
-from ntx.reports.service import _build_available_wells
 
 pytestmark = pytest.mark.django_db
 
