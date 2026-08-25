@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Callable, Sequence
+from typing import Callable, Literal, Sequence
 
 from ntx.analysis.dtos import AnalysisPipelineResult
 
@@ -19,6 +19,8 @@ class PlotlyBuildContext:
     params: Sequence[str] | None = None
     x_axis: str | None = None
     y_axis: str | None = None
+    selected_wells: list[str] | None = None
+    selected_wells_mode: Literal["mean", "individual"] | None = None
 
 
 class ParamSelectionMode(str, Enum):
@@ -49,10 +51,16 @@ def _build_heatmap(result: AnalysisPipelineResult, ctx: PlotlyBuildContext) -> l
 
 
 def _build_scatter(result: AnalysisPipelineResult, ctx: PlotlyBuildContext) -> list[PlotlyCard]:
-    # Build scatter plot with x_axis and y_axis parameters.
+    # Build scatter plot with x_axis, y_axis parameters, and optional well selection.
     if not ctx.x_axis or not ctx.y_axis:
         raise ValueError("Scatter plot requires both x_axis and y_axis parameters")
-    return build_correlation_scatter_card(result, x_axis=ctx.x_axis, y_axis=ctx.y_axis)
+    return build_correlation_scatter_card(
+        result,
+        x_axis=ctx.x_axis,
+        y_axis=ctx.y_axis,
+        selected_wells=ctx.selected_wells,
+        selected_wells_mode=ctx.selected_wells_mode,
+    )
 
 
 def _build_concentration_response(
@@ -86,7 +94,7 @@ DEFAULT_PLOTLY_BUILDERS: list[PlotlyCardBuilder] = [
     ),
     PlotlyCardBuilder(
         key="scatter",
-        title="Condition mean parameter comparison",
+        title="Parameter scatter",
         description="Compare two parameters against each other.",
         param_selection_mode=ParamSelectionMode.XY_AXES,
         build=_build_scatter,

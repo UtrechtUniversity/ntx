@@ -142,7 +142,7 @@ def run_experiment_analysis(
     df, fences, outliers = _remove_outliers(df, method=resolved_outlier_method)
     aggregates = _aggregate(df)
 
-    param_infos = _build_param_infos(sorted(df.get_column("param").unique().to_list()))
+    param_infos = build_param_infos(sorted(df.get_column("param").unique().to_list()))
     labels = AnalysisLabels(
         params=param_infos,
         conditions=sorted(condition_infos.values(), key=lambda info: info.label),
@@ -317,7 +317,8 @@ def _condition_display_label(condition: Condition) -> str:
     return base
 
 
-def _build_param_infos(params: list[str]) -> list[ParamInfo]:
+def build_param_infos(params: list[str]) -> list[ParamInfo]:
+    """Build consistently ordered display metadata for metric parameter keys."""
     inverse: dict[str, str] = {}
     for raw, internal in AXION_METRICS_MAP.items():
         inverse.setdefault(internal, raw)

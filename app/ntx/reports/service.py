@@ -2,14 +2,24 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Sequence
-from typing import Any
+from typing import Any, Literal
 
-from ntx.analysis.pipeline import run_experiment_analysis
-from ntx.models import OutlierMethod, Project
+from django.db.models import Prefetch
+
+from ntx.analysis.dtos import ParamInfo
+from ntx.analysis.pipeline import (
+    _condition_display_label,
+    build_param_infos,
+    run_experiment_analysis,
+)
+from ntx.metrics_store import fetch_experiment_metrics_frames
+from ntx.models import Condition, Experiment, OutlierMethod, Project, _normalize_well
 from ntx.reports.plotly.builders import PlotlyBuildContext, select_plot_builders
 from ntx.reports.plotly.contracts import (
     PlotlyCard,
     PlotlyParamOption,
+    PlotlyWellOption,
+    ProjectReportExperimentMetadataPayload,
     ProjectReportPayload,
 )
 
@@ -29,6 +39,35 @@ DEFAULT_REPORT_PARAMS: Sequence[str] = (
 )
 
 
+def build_project_report_experiment_metadata_payload(
+    project: Project,
+    *,
+    experiment: int,
+) -> dict[str, Any]:
+    """Build parameter and well metadata for one project-owned experiment."""
+    condition_queryset = Condition.objects.select_related(
+        "chemical__canonical",
+        "unit__canonical",
+    )
+    selected_experiment = (
+        project.experiments.prefetch_related(Prefetch("conditions", queryset=condition_queryset))
+        .filter(id=experiment)
+        .first()
+    )
+    if selected_experiment is None:
+        raise ValueError("Selected experiment does not belong to this project.")
+
+    frames = fetch_experiment_metrics_frames([selected_experiment.id])
+    param_keys = sorted({param for frame in frames for param in frame.metrics.params})
+    available_params = _build_available_params(build_param_infos(param_keys))
+    payload = ProjectReportExperimentMetadataPayload(
+        selected_experiment=selected_experiment.id,
+        available_params=available_params,
+        available_wells=_build_available_wells(selected_experiment),
+    )
+    return payload.model_dump(mode="json")
+
+
 def build_project_report_payload(
     project: Project,
     *,
@@ -37,37 +76,85 @@ def build_project_report_payload(
     x_axis: str | None = None,
     y_axis: str | None = None,
     experiment: int | None = None,
+    selected_wells: list[str] | None = None,
+    selected_wells_mode: str | None = None,
     outlier_method: str | OutlierMethod | None = None,
 ) -> dict[str, Any]:
-    """
-    Build a Plotly-first report payload for a project.
+    """Build and serialize a Plotly report payload for a project.
 
-    - Payload: {"version": 1, "cards": [...]} with parameter metadata.
-    - Cards wrap fully-formed Plotly figure JSON.
-    - For scatter plots: x_axis and y_axis parameters are used.
-    - For other plots: params (multiple selection) are used.
-    """
-    # Build the list of available experiments for the project to populate the UI.
-    experiments_qs = list(project.experiments.all())
-    available_experiments = [
-        {"id": exp.id, "label": f"{exp.code} ({exp.pk})"} for exp in experiments_qs
-    ]
+    The payload contains fully formed Plotly card JSON and parameter-selection metadata. Scatter
+    reports use "x_axis" and "y_axis" and require one experiment belonging to the project.
+    Their well keys are normalized, deduplicated, and validated against that experiment, and
+    "selected_wells_mode" defaults to "mean". Scatter payloads also include the selected
+    experiment, its available wells, the normalized well selection, and the effective display mode.
 
-    # If a specific experiment is requested, validate and run analysis for that experiment only.
-    if experiment is not None:
-        experiment_ids = [int(experiment)]
+    Non-scatter reports use "params" and analyze either the selected project-owned experiment or
+    all experiments in the project when no experiment is selected. Invalid plot, experiment,
+    parameter, axis, well, display-mode, or outlier-method selections raise "ValueError".
+    """
+    builders = select_plot_builders(plot)
+    scatter_requested = any(builder.key == "scatter" for builder in builders)
+    param_selection_mode = builders[0].param_selection_mode.value
+
+    experiments_queryset = project.experiments.all()
+    if scatter_requested and experiment is not None:
+        condition_queryset = Condition.objects.filter(experiment_id=experiment).select_related(
+            "chemical__canonical",
+            "unit__canonical",
+        )
+        experiments_queryset = experiments_queryset.prefetch_related(
+            Prefetch("conditions", queryset=condition_queryset)
+        )
+    experiments = list(experiments_queryset)
+    experiment_by_id = {item.id: item for item in experiments}
+    selected_experiment = experiment_by_id.get(experiment) if experiment is not None else None
+    scatter_experiment: Experiment | None = None
+
+    if scatter_requested:
+        if experiment is None:
+            raise ValueError("Scatter plot requires an experiment.")
+        if selected_experiment is None:
+            raise ValueError("Selected experiment does not belong to this project.")
+        scatter_experiment = selected_experiment
+        experiment_ids = [selected_experiment.id]
+    elif experiment is not None:
+        if selected_experiment is None:
+            raise ValueError("Selected experiment does not belong to this project.")
+        experiment_ids = [selected_experiment.id]
     else:
-        experiment_ids = [exp.id for exp in experiments_qs]
+        experiment_ids = list(experiment_by_id)
+
+    normalized_selected_wells: list[str] | None = None
+    normalized_selected_wells_mode: Literal["mean", "individual"] | None = None
+    if scatter_requested:
+        if scatter_experiment is None:
+            raise ValueError("Selected experiment does not belong to this project.")
+        normalized_selected_wells = _normalize_well_keys(selected_wells)
+        available_well_keys = {
+            well
+            for condition in scatter_experiment.conditions.all()
+            for well in condition.wells
+            if isinstance(well, str)
+        }
+        unknown_wells = [
+            well for well in normalized_selected_wells or [] if well not in available_well_keys
+        ]
+        if unknown_wells:
+            raise ValueError(
+                f"Unknown well(s) for selected experiment: {', '.join(unknown_wells)}."
+            )
+
+        requested_wells_mode = (selected_wells_mode or "mean").strip().lower()
+        if requested_wells_mode not in {"mean", "individual"}:
+            raise ValueError("selected_wells_mode must be 'mean' or 'individual'.")
+        normalized_selected_wells_mode = (
+            "individual" if requested_wells_mode == "individual" else "mean"
+        )
 
     selected_outlier_method = OutlierMethod(outlier_method or project.outlier_method)
     result = run_experiment_analysis(experiment_ids, outlier_method=selected_outlier_method)
 
-    cards: list[PlotlyCard] = []
-
-    available_params = [
-        PlotlyParamOption(key=param.key, label=param.label, section=param.section)
-        for param in result.labels.params
-    ]
+    available_params = _build_available_params(result.labels.params)
     available_keys = [param.key for param in available_params]
     available_key_set = set(available_keys)
     default_selected_params = [key for key in DEFAULT_REPORT_PARAMS if key in available_key_set]
@@ -77,20 +164,26 @@ def build_project_report_payload(
         default_selected_params=default_selected_params,
     )
 
-    # Determine parameter selection mode based on builder
-    builders = select_plot_builders(plot)
-    param_selection_mode = builders[0].param_selection_mode.value if builders else "multiple"
-
-    # Create context with appropriate parameters
     if param_selection_mode == "xy_axes":
-        context = PlotlyBuildContext(x_axis=x_axis, y_axis=y_axis)
+        context = PlotlyBuildContext(
+            x_axis=x_axis,
+            y_axis=y_axis,
+            selected_wells=normalized_selected_wells,
+            selected_wells_mode=normalized_selected_wells_mode,
+        )
     else:
         context = PlotlyBuildContext(params=selected_params)
 
+    cards: list[PlotlyCard] = []
     for builder in builders:
-        # Fail fast on unexpected builder errors (developer-facing).
         cards.extend(builder.build(result, context))
 
+    available_experiments = [
+        {"id": item.id, "label": f"{item.code} ({item.pk})"} for item in experiments
+    ]
+    available_wells = (
+        _build_available_wells(scatter_experiment) if scatter_experiment is not None else []
+    )
     payload = ProjectReportPayload(
         cards=cards,
         available_params=available_params,
@@ -100,7 +193,12 @@ def build_project_report_payload(
         x_axis=x_axis,
         y_axis=y_axis,
         available_experiments=available_experiments,
-        selected_experiment=int(experiment) if experiment is not None else None,
+        selected_experiment=(selected_experiment.id if selected_experiment is not None else None),
+        available_wells=available_wells,
+        selected_wells=(normalized_selected_wells if param_selection_mode == "xy_axes" else None),
+        selected_wells_mode=(
+            normalized_selected_wells_mode if param_selection_mode == "xy_axes" else None
+        ),
     )
     return payload.model_dump(mode="json", exclude_none=True)
 
@@ -142,3 +240,42 @@ def _normalize_param_keys(params: Sequence[str] | None) -> list[str]:
         seen.add(key)
         normalized.append(key)
     return normalized
+
+
+def _normalize_well_keys(wells: Sequence[str] | None) -> list[str] | None:
+    if not wells:
+        return None
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for raw in wells:
+        token = raw.strip()
+        if not token:
+            continue
+        key = _normalize_well(token)
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append(key)
+    return normalized or None
+
+
+def _build_available_params(params: Sequence[ParamInfo]) -> list[PlotlyParamOption]:
+    return [
+        PlotlyParamOption(key=param.key, label=param.label, section=param.section)
+        for param in params
+    ]
+
+
+def _build_available_wells(experiment: Experiment) -> list[PlotlyWellOption]:
+    available_wells: list[PlotlyWellOption] = []
+    for condition in experiment.conditions.all():
+        condition_label = _condition_display_label(condition)
+        for well in condition.wells:
+            available_wells.append(
+                PlotlyWellOption(
+                    key=well,
+                    label=f"{well} ({condition_label})",
+                )
+            )
+    return available_wells

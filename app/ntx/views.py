@@ -8,7 +8,10 @@ from django.views.decorators.http import require_GET
 from .analysis.pipeline import AnalysisPipelineError
 from .models import Condition, Experiment, OutlierMethod, Project
 from .reports.plotly.builders import build_plot_options
-from .reports.service import build_project_report_payload
+from .reports.service import (
+    build_project_report_experiment_metadata_payload,
+    build_project_report_payload,
+)
 
 
 def projects_overview(request):
@@ -67,11 +70,26 @@ def project_report_api(request, slug: str):
     plot = request.GET.get("plot")
     outlier_method = request.GET.get("outlier_method")
 
-    # Optional experiment selection (single experiment id)
+    # Optional experiment selection (required for scatter plots).
     experiment_param = request.GET.get("experiment")
-    experiment_id = int(experiment_param) if experiment_param and experiment_param.strip() else None
+
+    # Support plural `wells` query param (comma-separated or multiple params)
+    wells_input = request.GET.getlist("wells")
+    selected_wells: list[str] | None = None
+    parsed = [token.strip() for item in wells_input for token in item.split(",") if token.strip()]
+
+    if parsed:
+        selected_wells = list(dict.fromkeys(parsed))
+    else:
+        single = request.GET.get("well", "").strip() or None
+        selected_wells = [single] if single else None
+
+    selected_wells_mode = request.GET.get("selected_wells_mode", "").strip() or None
 
     try:
+        experiment_id = (
+            int(experiment_param) if experiment_param and experiment_param.strip() else None
+        )
         payload = build_project_report_payload(
             project,
             plot=plot,
@@ -79,9 +97,29 @@ def project_report_api(request, slug: str):
             x_axis=x_axis,
             y_axis=y_axis,
             experiment=experiment_id,
+            selected_wells=selected_wells,
+            selected_wells_mode=selected_wells_mode,
             outlier_method=outlier_method,
         )
     except (AnalysisPipelineError, ValueError) as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+
+    return JsonResponse(payload)
+
+
+@require_GET
+def project_report_metadata_api(request, slug: str):
+    project = get_object_or_404(Project, slug=slug)
+    experiment_param = request.GET.get("experiment")
+
+    try:
+        if experiment_param is None or not experiment_param.strip():
+            raise ValueError("Experiment selection is required.")
+        payload = build_project_report_experiment_metadata_payload(
+            project,
+            experiment=int(experiment_param),
+        )
+    except (AnalysisPipelineError, TypeError, ValueError) as exc:
         return JsonResponse({"error": str(exc)}, status=400)
 
     return JsonResponse(payload)

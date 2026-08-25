@@ -16,10 +16,12 @@
     {{ plot_options|json_script:"plot-options-data" }}
     {{ experiments|json_script:"experiments-data" }}
     {% url "ntx:project_report_api" slug=project.slug as project_report_api_url %}
+    {% url "ntx:project_report_metadata_api" slug=project.slug as project_report_metadata_api_url %}
     <section
       class="flex flex-col gap-3"
       x-data="projectReport({
         apiUrl: '{{ project_report_api_url|escapejs }}',
+        metadataUrl: '{{ project_report_metadata_api_url|escapejs }}',
         plotOptions: JSON.parse(document.getElementById('plot-options-data').textContent),
         experiments: JSON.parse(document.getElementById('experiments-data').textContent),
         outlierMethod: '{{ project.outlier_method|escapejs }}'
@@ -37,7 +39,7 @@
             <select
               class="w-80 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
               x-model="outlierMethod"
-              :disabled="loading"
+              :disabled="loading || metadataLoading"
               @change="load()"
             >
               {% for value, label in outlier_method_choices %}
@@ -63,7 +65,7 @@
                   ? 'bg-slate-900 text-white'
                   : 'text-slate-700 hover:bg-slate-100'"
                 :aria-selected="plot === option.value"
-                :disabled="loading"
+                :disabled="loading || metadataLoading"
                 role="tab"
                 @click="if (plot !== option.value) { 
                   plot = option.value;
@@ -74,7 +76,13 @@
                   yAxis = '';
                   xAxisSearch = '';
                   yAxisSearch = '';
-                  if (option.param_selection_mode !== 'xy_axes') {
+                  selectedWells = [];
+                  availableWells = [];
+                  availableWellsExperiment = null;
+                  if (option.param_selection_mode === 'xy_axes') {
+                    availableParams = [];
+                    loadExperimentMetadata();
+                  } else {
                     load();
                   }
                 }"
@@ -97,12 +105,82 @@
               <select
                 class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
                 x-model.number="selectedExperiment"
-                @change="load()"
+                :disabled="loading || metadataLoading || experiments.length === 0"
+                @change="experimentChanged()"
               >
                 <template x-for="exp in experiments" :key="exp.id">
                   <option :value="exp.id" x-text="exp.label"></option>
                 </template>
               </select>
+            </div>
+          </div>
+          <div class="mt-2" x-show="activePlot && activePlot.param_selection_mode === 'xy_axes'">
+            <label class="text-sm text-slate-600">Wells</label>
+            <div class="mt-1 p-3 border border-slate-300 rounded-md bg-white">
+              <div class="border-t border-slate-200 pt-2">
+                <label class="sr-only" for="wells-multi-select">Wells multi-select</label>
+                <select
+                  id="wells-multi-select"
+                  multiple
+                  size="6"
+                  x-model="selectedWells"
+                  @change="load()"
+                  :disabled="loading || metadataLoading || !wellControlsReady"
+                  class="w-full rounded-md border border-slate-300 px-2 py-1 text-sm bg-white disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <template x-for="well in availableWells" :key="well.key">
+                    <option :value="well.key" x-text="well.label"></option>
+                  </template>
+                </select>
+
+                <div class="mt-2 flex gap-2">
+                  <button
+                    type="button"
+                    class="rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-700 hover:bg-slate-50"
+                    @click="selectedWells = availableWells.map(w => w.key); load()"
+                    :disabled="loading || metadataLoading || !wellControlsReady || availableWells.length === 0"
+                  >
+                    Select all
+                  </button>
+                  <button
+                    type="button"
+                    class="rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-700 hover:bg-slate-50"
+                    @click="selectedWells = []; load()"
+                    :disabled="loading || metadataLoading || !wellControlsReady"
+                  >
+                    Clear
+                  </button>
+                </div>
+                <div class="mt-3">
+                  <label class="text-sm text-slate-600">Multi-well display</label>
+                  <div class="mt-2 flex flex-wrap items-center gap-3 text-sm">
+                      <label class="inline-flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="selected-wells-mode"
+                          value="mean"
+                          x-model="selectedWellsMode"
+                          @change="load()"
+                          :disabled="loading || metadataLoading || !wellControlsReady || selectedWells.length === 0"
+                          class="rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+                        />
+                        Mean per condition
+                      </label>
+                      <label class="inline-flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="selected-wells-mode"
+                          value="individual"
+                          x-model="selectedWellsMode"
+                          @change="load()"
+                          :disabled="loading || metadataLoading || !wellControlsReady || selectedWells.length === 0"
+                          class="rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+                        />
+                        Individual wells
+                      </label>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -146,7 +224,7 @@
                           class="peer sr-only"
                           :value="param.key"
                           x-model="selectedParams"
-                          :disabled="loading"
+                          :disabled="loading || metadataLoading"
                         >
                         <span
                           class="flex h-full min-w-0 items-center rounded-md border px-2 py-1.5 text-sm select-none transition peer-focus-visible:ring-2 peer-focus-visible:ring-slate-500 peer-focus-visible:ring-offset-1 peer-disabled:cursor-not-allowed peer-disabled:opacity-50"
@@ -167,7 +245,7 @@
                 type="button"
                 class="rounded-md bg-slate-900 text-white px-3 py-2 text-sm hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
                 @click="applyParams()"
-                :disabled="loading || availableParams.length === 0"
+                :disabled="loading || metadataLoading || availableParams.length === 0"
               >
                 Apply parameters
               </button>
@@ -175,7 +253,7 @@
                 type="button"
                 class="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
                 @click="selectedParams = []"
-                :disabled="loading || selectedParams.length === 0"
+                :disabled="loading || metadataLoading || selectedParams.length === 0"
               >
                 Clear parameters
               </button>
@@ -183,7 +261,7 @@
                 type="button"
                 class="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
                 @click="resetParams(); applyParams();"
-                :disabled="loading || defaultSelectedParams.length === 0"
+                :disabled="loading || metadataLoading || defaultSelectedParams.length === 0"
               >
                 Reset defaults
               </button>
@@ -209,7 +287,7 @@
                       else { xAxisSearch = xAxis ? `${getParamLabel(xAxis)} (${getParamSection(xAxis)})` : ''; }
                     "
                     placeholder="Search or select parameter..."
-                    :disabled="loading"
+                    :disabled="loading || metadataLoading || !selectedExperiment"
                   >
                   <datalist id="x-axis-options">
                     <template x-for="param in availableParams" :key="param.key">
@@ -235,7 +313,7 @@
                   else { yAxisSearch = yAxis ? `${getParamLabel(yAxis)} (${getParamSection(yAxis)})` : ''; }
                 "
                 placeholder="Search or select parameter..."
-                :disabled="loading"
+                :disabled="loading || metadataLoading || !selectedExperiment"
               >
               <datalist id="y-axis-options">
                 <template x-for="param in availableParams" :key="param.key">
@@ -251,7 +329,7 @@
                 type="button"
                 class="rounded-md bg-slate-900 text-white px-3 py-2 text-sm hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
                 @click="applyXYAxes()"
-                :disabled="loading || !xAxis || !yAxis"
+                :disabled="loading || metadataLoading || !selectedExperiment || !xAxis || !yAxis"
               >
                 Apply comparison
               </button>
