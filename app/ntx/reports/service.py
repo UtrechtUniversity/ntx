@@ -86,7 +86,8 @@ def build_project_report_payload(
     normalized_selected_wells: list[str] | None = None
     normalized_selected_wells_mode: Literal["mean", "individual"] | None = None
     if scatter_requested:
-        assert scatter_experiment is not None
+        if scatter_experiment is None:
+            raise ValueError("Selected experiment does not belong to this project.")
         normalized_selected_wells = _normalize_well_keys(selected_wells)
         available_well_keys = {
             well
