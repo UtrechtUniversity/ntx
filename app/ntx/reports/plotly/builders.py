@@ -94,7 +94,7 @@ DEFAULT_PLOTLY_BUILDERS: list[PlotlyCardBuilder] = [
     ),
     PlotlyCardBuilder(
         key="scatter",
-        title="Condition mean parameter comparison",
+        title="Parameter scatter",
         description="Compare two parameters against each other.",
         param_selection_mode=ParamSelectionMode.XY_AXES,
         build=_build_scatter,
