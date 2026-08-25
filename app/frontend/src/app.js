@@ -2,6 +2,7 @@
 // the report UI, then starts Alpine on the page.
 // Alpine provides lightweight reactivity for the report view.
 import Alpine from "alpinejs";
+import { reconcileScatterAxes } from "./report-metadata.mjs";
 // Side-effect import: register the global `x-plotly` directive once.
 // Keeping this separate avoids per-component Plotly lifecycle code;
 // prevents render/clear actions being needed across the app.
@@ -24,6 +25,7 @@ function projectReport(options = {}) {
   // Component state and methods that Alpine binds to the report view.
   return {
     apiUrl: options.apiUrl, // Base API endpoint injected by the template.
+    metadataUrl: options.metadataUrl, // Experiment metadata endpoint injected by the template.
     plotOptions: Array.isArray(options.plotOptions) ? options.plotOptions : [], // Options for selector.
     plot: typeof options.plot === "string" ? options.plot : "", // Current plot key.
     experiments: Array.isArray(options.experiments) ? options.experiments : [], // Experiment options for selector
@@ -47,6 +49,8 @@ function projectReport(options = {}) {
     cards: [], // Plot card data returned by the API.
     loading: false, // UI flag for showing the loading state.
     requestId: 0, // Counter for ignoring stale responses.
+    metadataLoading: false, // UI flag for experiment metadata requests.
+    metadataRequestId: 0, // Counter for ignoring stale metadata responses.
     errorMessage: "", // User-facing error message to display.
 
     get activePlot() {
@@ -112,22 +116,13 @@ function projectReport(options = {}) {
       return param ? param.section : "";
     },
 
-    selectDefaultXYAxes() {
-      this.xAxis = "";
-      this.yAxis = "";
-      this.xAxisSearch = "";
-      this.yAxisSearch = "";
-
-      if (this.availableParams.length < 2) {
-        return false;
-      }
-
-      const [xParam, yParam] = this.availableParams;
-      this.xAxis = xParam.key;
-      this.yAxis = yParam.key;
-      this.xAxisSearch = `${xParam.label} (${xParam.section})`;
-      this.yAxisSearch = `${yParam.label} (${yParam.section})`;
-      return true;
+    syncAxisSearchText() {
+      this.xAxisSearch = this.xAxis
+        ? `${this.getParamLabel(this.xAxis)} (${this.getParamSection(this.xAxis)})`
+        : "";
+      this.yAxisSearch = this.yAxis
+        ? `${this.getParamLabel(this.yAxis)} (${this.getParamSection(this.yAxis)})`
+        : "";
     },
 
     init() {
@@ -141,8 +136,12 @@ function projectReport(options = {}) {
         return;
       }
 
-      // Load the report once the component initializes.
-      this.load();
+      if (this.paramSelectionMode === "xy_axes") {
+        this.loadExperimentMetadata();
+      } else {
+        // Load the report once the component initializes.
+        this.load();
+      }
     },
 
     setError(message) {
@@ -200,11 +199,104 @@ function projectReport(options = {}) {
 
     experimentChanged() {
       this.selectedWells = [];
+      this.availableParams = [];
       this.availableWells = [];
       this.availableWellsExperiment = null;
       this.cards = [];
+      this.loadExperimentMetadata();
+    },
+
+    clearExperimentMetadata() {
+      this.availableParams = [];
+      this.availableWells = [];
+      this.availableWellsExperiment = null;
+      this.selectedWells = [];
+      this.xAxis = "";
+      this.yAxis = "";
+      this.syncAxisSearchText();
+      this.cards = [];
+    },
+
+    applyExperimentMetadata(payload) {
+      this.availableParams = Array.isArray(payload.available_params) ? payload.available_params : [];
+      this.availableWells = Array.isArray(payload.available_wells) ? payload.available_wells : [];
+      this.availableWellsExperiment = payload.selected_experiment;
+
+      const axes = reconcileScatterAxes(this.availableParams, this.xAxis, this.yAxis);
+      this.xAxis = axes.xAxis;
+      this.yAxis = axes.yAxis;
+      this.syncAxisSearchText();
+    },
+
+    async loadExperimentMetadata() {
+      if (!this.metadataUrl) {
+        this.clearExperimentMetadata();
+        this.setError("Missing experiment metadata API URL.");
+        return;
+      }
+      if (!this.selectedExperiment) {
+        this.clearExperimentMetadata();
+        this.setError("Select an experiment to build a scatter plot.");
+        return;
+      }
+
+      const requestedExperiment = Number(this.selectedExperiment);
+      const metadataRequestId = ++this.metadataRequestId;
+      this.metadataLoading = true;
+      this.clearMessages();
+      const finish = () => {
+        if (metadataRequestId === this.metadataRequestId) {
+          this.metadataLoading = false;
+        }
+      };
+
+      const url = new URL(this.metadataUrl, window.location.origin);
+      url.searchParams.set("experiment", String(requestedExperiment));
+
+      let response;
+      try {
+        response = await fetch(url.toString(), { headers: { Accept: "application/json" } });
+      } catch (err) {
+        if (metadataRequestId === this.metadataRequestId) {
+          this.clearExperimentMetadata();
+          this.setError("Failed to fetch experiment metadata.");
+        }
+        finish();
+        return;
+      }
+
+      let payload;
+      try {
+        payload = await response.json();
+      } catch (err) {
+        if (metadataRequestId === this.metadataRequestId) {
+          this.clearExperimentMetadata();
+          this.setError("Experiment metadata response was not valid JSON.");
+        }
+        finish();
+        return;
+      }
+
+      if (
+        metadataRequestId !== this.metadataRequestId ||
+        requestedExperiment !== Number(this.selectedExperiment)
+      ) {
+        finish();
+        return;
+      }
+      if (!response.ok) {
+        this.clearExperimentMetadata();
+        this.setError(payload.error || "Experiment metadata request failed.");
+        finish();
+        return;
+      }
+
+      this.applyExperimentMetadata(payload);
+      finish();
       if (this.xAxis && this.yAxis) {
         this.load();
+      } else {
+        this.setError("At least two parameters are required for a scatter plot.");
       }
     },
 

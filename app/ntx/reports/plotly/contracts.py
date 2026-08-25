@@ -37,6 +37,22 @@ class PlotlyParamOption(BaseModel):
     section: str
 
 
+class PlotlyWellOption(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    key: str
+    label: str
+
+
+class ProjectReportExperimentMetadataPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version: Literal[1] = 1
+    selected_experiment: int
+    available_params: list[PlotlyParamOption] = Field(default_factory=list)
+    available_wells: list[PlotlyWellOption] = Field(default_factory=list)
+
+
 class ProjectReportPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -51,6 +67,6 @@ class ProjectReportPayload(BaseModel):
     # Experiments available for this project-level report
     available_experiments: list[dict[str, object]] = Field(default_factory=list)
     selected_experiment: int | None = None
-    available_wells: list[dict[str, object]] = Field(default_factory=list)
+    available_wells: list[PlotlyWellOption] = Field(default_factory=list)
     selected_wells: list[str] | None = None
     selected_wells_mode: str | None = None

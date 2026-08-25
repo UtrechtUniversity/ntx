@@ -172,6 +172,7 @@ def _create_experiment(
     code: str,
     wells: list[str],
     value: float,
+    params: list[str] | None = None,
 ) -> Experiment:
     unit, _ = ConcentrationUnit.objects.get_or_create(
         slug="um", defaults={"name": "uM", "symbol": "uM"}
@@ -201,16 +202,17 @@ def _create_experiment(
         is_control=False,
         wells=wells[midpoint:],
     )
+    metric_params = params or ["burst_duration", "spikes_per_burst"]
     ratios = [
-        [1.0 if index < midpoint else value for index in range(len(wells))],
-        [1.0 if index < midpoint else value + 1 for index in range(len(wells))],
+        [1.0 if index < midpoint else value + param_index for index in range(len(wells))]
+        for param_index in range(len(metric_params))
     ]
     NeuronalMetricsFrame.objects.create(
         experiment=experiment,
         div=0,
         metrics_json=_metrics_payload(
             wells=wells,
-            params=["burst_duration", "spikes_per_burst"],
+            params=metric_params,
             ratios=ratios,
         ),
         qc_json=_qc_payload(wells),
@@ -232,6 +234,7 @@ def scatter_api_data():
         code="SCATTER-OTHER",
         wells=["C1", "C2", "D1", "D2"],
         value=99.0,
+        params=["number_of_spikes", "number_of_bursts"],
     )
     foreign_project = Project.objects.create(name="Foreign Scatter Project")
     foreign = _create_experiment(
@@ -308,3 +311,64 @@ def test_scatter_api_metadata_and_analysis_are_experiment_scoped(client, scatter
     traces = payload["cards"][0]["figure"]["data"]
     assert len(traces) == 2
     assert max(value for trace in traces for value in trace["x"]) < 1_000
+
+
+def test_report_metadata_api_is_experiment_scoped_without_axes(client, scatter_api_data):
+    project, selected, other, _ = scatter_api_data
+    url = reverse("ntx:project_report_metadata_api", kwargs={"slug": project.slug})
+
+    selected_response = client.get(url, {"experiment": selected.id})
+    assert selected_response.status_code == 200
+    selected_payload = selected_response.json()
+    assert selected_payload["selected_experiment"] == selected.id
+    assert {item["key"] for item in selected_payload["available_params"]} == {
+        "burst_duration",
+        "spikes_per_burst",
+    }
+    assert {item["key"] for item in selected_payload["available_wells"]} == {
+        "A1",
+        "A2",
+        "B1",
+        "B2",
+    }
+
+    other_response = client.get(url, {"experiment": other.id})
+    assert other_response.status_code == 200
+    other_payload = other_response.json()
+    assert other_payload["selected_experiment"] == other.id
+    assert {item["key"] for item in other_payload["available_params"]} == {
+        "number_of_spikes",
+        "number_of_bursts",
+    }
+    assert {item["key"] for item in other_payload["available_wells"]} == {
+        "C1",
+        "C2",
+        "D1",
+        "D2",
+    }
+
+
+def test_report_metadata_api_rejects_invalid_experiments(client, scatter_api_data):
+    project, _, _, foreign = scatter_api_data
+    url = reverse("ntx:project_report_metadata_api", kwargs={"slug": project.slug})
+
+    assert client.get(url).status_code == 400
+    assert client.get(url, {"experiment": "not-an-id"}).status_code == 400
+    assert client.get(url, {"experiment": foreign.id}).status_code == 400
+
+
+def test_non_scatter_report_echoes_selected_experiment(client, scatter_api_data):
+    project, selected, _, _ = scatter_api_data
+    url = reverse("ntx:project_report_api", kwargs={"slug": project.slug})
+
+    response = client.get(
+        url,
+        {
+            "plot": "heatmap",
+            "experiment": selected.id,
+            "params": "burst_duration",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["selected_experiment"] == selected.id

@@ -8,7 +8,10 @@ from django.views.decorators.http import require_GET
 from .analysis.pipeline import AnalysisPipelineError
 from .models import Condition, Experiment, OutlierMethod, Project
 from .reports.plotly.builders import build_plot_options
-from .reports.service import build_project_report_payload
+from .reports.service import (
+    build_project_report_experiment_metadata_payload,
+    build_project_report_payload,
+)
 
 
 def projects_overview(request):
@@ -99,6 +102,24 @@ def project_report_api(request, slug: str):
             outlier_method=outlier_method,
         )
     except (AnalysisPipelineError, ValueError) as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+
+    return JsonResponse(payload)
+
+
+@require_GET
+def project_report_metadata_api(request, slug: str):
+    project = get_object_or_404(Project, slug=slug)
+    experiment_param = request.GET.get("experiment")
+
+    try:
+        if experiment_param is None or not experiment_param.strip():
+            raise ValueError("Experiment selection is required.")
+        payload = build_project_report_experiment_metadata_payload(
+            project,
+            experiment=int(experiment_param),
+        )
+    except (AnalysisPipelineError, TypeError, ValueError) as exc:
         return JsonResponse({"error": str(exc)}, status=400)
 
     return JsonResponse(payload)
