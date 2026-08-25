@@ -112,6 +112,24 @@ function projectReport(options = {}) {
       return param ? param.section : "";
     },
 
+    selectDefaultXYAxes() {
+      this.xAxis = "";
+      this.yAxis = "";
+      this.xAxisSearch = "";
+      this.yAxisSearch = "";
+
+      if (this.availableParams.length < 2) {
+        return false;
+      }
+
+      const [xParam, yParam] = this.availableParams;
+      this.xAxis = xParam.key;
+      this.yAxis = yParam.key;
+      this.xAxisSearch = `${xParam.label} (${xParam.section})`;
+      this.yAxisSearch = `${yParam.label} (${yParam.section})`;
+      return true;
+    },
+
     init() {
       // Fail fast if the component is misconfigured.
       if (!this.apiUrl) {

@@ -77,7 +77,11 @@
                   selectedWells = [];
                   availableWells = [];
                   availableWellsExperiment = null;
-                  if (option.param_selection_mode !== 'xy_axes') {
+                  if (option.param_selection_mode === 'xy_axes') {
+                    if (selectDefaultXYAxes()) {
+                      load();
+                    }
+                  } else {
                     load();
                   }
                 }"
