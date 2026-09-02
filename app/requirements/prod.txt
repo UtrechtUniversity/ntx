@@ -14,7 +14,7 @@ dj-database-url==3.1.2
     # via
     #   -c requirements/base.txt
     #   -r requirements/base.in
-django==5.2.16
+django==5.2.17
     # via
     #   -c requirements/base.txt
     #   -r requirements/base.in
@@ -27,16 +27,26 @@ et-xmlfile==2.0.0
     # via
     #   -c requirements/base.txt
     #   openpyxl
-gunicorn==26.0.0
-    # via -r requirements/prod.in
-narwhals==2.24.0
+formulaic==1.2.2
     # via
     #   -c requirements/base.txt
+    #   statsmodels
+gunicorn==26.2.0
+    # via -r requirements/prod.in
+interface-meta==2.0.1
+    # via
+    #   -c requirements/base.txt
+    #   formulaic
+narwhals==2.25.0
+    # via
+    #   -c requirements/base.txt
+    #   formulaic
     #   plotly
-numpy==2.5.1
+numpy==2.5.2
     # via
     #   -c requirements/base.txt
     #   -r requirements/base.in
+    #   formulaic
     #   pandas
     #   patsy
     #   scipy
@@ -45,42 +55,43 @@ openpyxl==3.1.5
     # via
     #   -c requirements/base.txt
     #   -r requirements/base.in
-packaging==26.2
+packaging==26.3
     # via
     #   -c requirements/base.txt
-    #   gunicorn
+    #   patsy
     #   plotly
     #   statsmodels
 pandas==2.3.3
     # via
     #   -c requirements/base.txt
     #   -r requirements/base.in
+    #   formulaic
     #   statsmodels
-patsy==1.0.2
+patsy==1.0.3
     # via
     #   -c requirements/base.txt
     #   statsmodels
-plotly==6.9.0
+plotly==7.0.0
     # via
     #   -c requirements/base.txt
     #   -r requirements/base.in
-polars==1.43.1
+polars==1.44.1
     # via
     #   -c requirements/base.txt
     #   -r requirements/base.in
-polars-runtime-32==1.43.1
+polars-runtime-32==1.44.1
     # via
     #   -c requirements/base.txt
     #   polars
-psycopg==3.3.4
+psycopg==3.3.5
     # via -r requirements/prod.in
-psycopg-binary==3.3.4 ; implementation_name != 'pypy'
+psycopg-binary==3.3.5 ; implementation_name != 'pypy'
     # via psycopg
-pydantic==2.13.4
+pydantic==2.13.5
     # via
     #   -c requirements/base.txt
     #   -r requirements/base.in
-pydantic-core==2.46.4
+pydantic-core==2.46.5
     # via
     #   -c requirements/base.txt
     #   pydantic
@@ -92,30 +103,32 @@ pytz==2026.3.post1
     # via
     #   -c requirements/base.txt
     #   pandas
-scipy==1.18.0
+scipy==1.18.1
     # via
     #   -c requirements/base.txt
     #   -r requirements/base.in
+    #   formulaic
     #   statsmodels
 six==1.17.0
     # via
     #   -c requirements/base.txt
     #   python-dateutil
-sqlparse==0.5.5
+sqlparse==0.6.0
     # via
     #   -c requirements/base.txt
     #   django
-statsmodels==0.14.6
+statsmodels==0.15.0
     # via
     #   -c requirements/base.txt
     #   -r requirements/base.in
 typing-extensions==4.16.0
     # via
     #   -c requirements/base.txt
+    #   formulaic
     #   pydantic
     #   pydantic-core
     #   typing-inspection
-typing-inspection==0.4.2
+typing-inspection==0.4.4
     # via
     #   -c requirements/base.txt
     #   pydantic
@@ -127,3 +140,7 @@ tzdata==2026.3
     #   psycopg
 whitenoise==6.12.0
     # via -r requirements/prod.in
+wrapt==2.4.0
+    # via
+    #   -c requirements/base.txt
+    #   formulaic
