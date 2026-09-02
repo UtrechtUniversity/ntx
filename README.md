@@ -91,9 +91,14 @@ python manage.py import_axion_folder ../data/ENDpoiNTs --control-chemical Water
 ```sh
 # Update Python requirements
 # Use uv instead of plain pip
-uv pip compile requirements/base.in --universal --output-file requirements/base.txt
-uv pip compile requirements/dev.in --universal --output-file requirements/dev.txt
-uv pip compile requirements/prod.in --universal --output-file requirements/prod.txt
+cd app
+uv pip compile requirements/base.in --universal --upgrade --output-file requirements/base.txt
+uv pip compile requirements/dev.in --universal --upgrade --output-file requirements/dev.txt
+uv pip compile requirements/prod.in --universal --upgrade --output-file requirements/prod.txt
+
+# Update NPM dependencies
+cd app/frontend
+npm update
 
 # Use Ruff linter
 ruff check
