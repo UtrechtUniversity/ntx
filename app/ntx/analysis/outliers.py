@@ -50,7 +50,8 @@ def compute_outlier_summary(values: Sequence[object], *, method: OutlierMethod) 
     Compute outlier fences:
 
     - Skip outlier removal when n < 4.
-    - BOXPLOT uses the adjusted boxplot (medcouple) fences with midpoint quantiles.
+    - BOXPLOT uses the adjusted boxplot (medcouple) fences with midpoint quantiles,
+      using statsmodels' exact O(N**2) algorithm (use_fast=False).
     - ZSCORE uses mean ± 2*std (sample std, ddof=1) when n >= 4.
     """
     cleaned = finite_floats(values)
@@ -128,7 +129,7 @@ def compute_outlier_summary(values: Sequence[object], *, method: OutlierMethod) 
         )
 
     try:
-        mc = float(medcouple(arr))
+        mc = float(medcouple(arr, use_fast=False))
     except Exception:  # noqa: BLE001 - statsmodels may raise on degenerate data
         mc = float("nan")
 

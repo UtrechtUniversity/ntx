@@ -6,7 +6,7 @@ asgiref==3.12.1
     # via django
 dj-database-url==3.1.2
     # via -r requirements/base.in
-django==5.2.16
+django==5.2.17
     # via
     #   -r requirements/base.in
     #   dj-database-url
@@ -14,59 +14,72 @@ django-environ==0.14.0
     # via -r requirements/base.in
 et-xmlfile==2.0.0
     # via openpyxl
-narwhals==2.24.0
-    # via plotly
-numpy==2.5.1
+formulaic==1.2.2
+    # via statsmodels
+interface-meta==2.0.1
+    # via formulaic
+narwhals==2.25.0
+    # via
+    #   formulaic
+    #   plotly
+numpy==2.5.2
     # via
     #   -r requirements/base.in
+    #   formulaic
     #   pandas
     #   patsy
     #   scipy
     #   statsmodels
 openpyxl==3.1.5
     # via -r requirements/base.in
-packaging==26.2
+packaging==26.3
     # via
+    #   patsy
     #   plotly
     #   statsmodels
 pandas==2.3.3
     # via
     #   -r requirements/base.in
+    #   formulaic
     #   statsmodels
-patsy==1.0.2
+patsy==1.0.3
     # via statsmodels
-plotly==6.9.0
+plotly==7.0.0
     # via -r requirements/base.in
-polars==1.43.1
+polars==1.44.1
     # via -r requirements/base.in
-polars-runtime-32==1.43.1
+polars-runtime-32==1.44.1
     # via polars
-pydantic==2.13.4
+pydantic==2.13.5
     # via -r requirements/base.in
-pydantic-core==2.46.4
+pydantic-core==2.46.5
     # via pydantic
 python-dateutil==2.9.0.post0
     # via pandas
 pytz==2026.3.post1
     # via pandas
-scipy==1.18.0
+scipy==1.18.1
     # via
     #   -r requirements/base.in
+    #   formulaic
     #   statsmodels
 six==1.17.0
     # via python-dateutil
-sqlparse==0.5.5
+sqlparse==0.6.0
     # via django
-statsmodels==0.14.6
+statsmodels==0.15.0
     # via -r requirements/base.in
 typing-extensions==4.16.0
     # via
+    #   formulaic
     #   pydantic
     #   pydantic-core
     #   typing-inspection
-typing-inspection==0.4.2
+typing-inspection==0.4.4
     # via pydantic
 tzdata==2026.3
     # via
     #   django
     #   pandas
+wrapt==2.4.0
+    # via formulaic

@@ -18,5 +18,9 @@
     "esbuild": "^0.25.0",
     "plotly.js-dist-min": "^3.3.1",
     "tailwindcss": "^4.1.17"
+  },
+  "allowScripts": {
+    "esbuild@0.25.12": true,
+    "@parcel/watcher@2.5.1": true
   }
 }
