@@ -14,7 +14,7 @@ from ntx.analysis.pipeline import (
 )
 from ntx.metrics_store import fetch_experiment_metrics_frames
 from ntx.models import Condition, Experiment, OutlierMethod, Project, _normalize_well
-from ntx.reports.plotly.builders import PlotlyBuildContext, select_plot_builders
+from ntx.reports.plotly.builders import PlotlyBuildContext, select_plot_builder
 from ntx.reports.plotly.contracts import (
     PlotlyCard,
     PlotlyParamOption,
@@ -92,9 +92,9 @@ def build_project_report_payload(
     all experiments in the project when no experiment is selected. Invalid plot, experiment,
     parameter, axis, well, display-mode, or outlier-method selections raise "ValueError".
     """
-    builders = select_plot_builders(plot)
-    scatter_requested = any(builder.key == "scatter" for builder in builders)
-    param_selection_mode = builders[0].param_selection_mode.value
+    builder = select_plot_builder(plot)
+    scatter_requested = builder.key == "scatter"
+    param_selection_mode = builder.param_selection_mode.value
 
     experiments_queryset = project.experiments.all()
     if scatter_requested and experiment is not None:
@@ -174,9 +174,7 @@ def build_project_report_payload(
     else:
         context = PlotlyBuildContext(params=selected_params)
 
-    cards: list[PlotlyCard] = []
-    for builder in builders:
-        cards.extend(builder.build(result, context))
+    cards: list[PlotlyCard] = builder.build(result, context)
 
     available_experiments = [
         {"id": item.id, "label": f"{item.code} ({item.pk})"} for item in experiments

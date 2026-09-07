@@ -105,27 +105,15 @@ DEFAULT_PLOTLY_BUILDERS: list[PlotlyCardBuilder] = [
 PLOTLY_BUILDERS_BY_KEY = {builder.key: builder for builder in DEFAULT_PLOTLY_BUILDERS}
 
 
-def select_plot_builders(plot: str | None) -> list[PlotlyCardBuilder]:
-    # Support comma-separated plot keys so multiple plot types can be requested.
+def select_plot_builder(plot: str | None) -> PlotlyCardBuilder:
     if plot is None or not plot.strip():
         raise ValueError("Plot selection is required.")
 
-    plot_keys = [token.strip() for token in plot.split(",") if token.strip()]
-    if not plot_keys:
-        raise ValueError("Plot selection is required.")
-
-    # Enforce strict plot keys so callers must request known builders.
-    unknown_keys = [key for key in plot_keys if key not in PLOTLY_BUILDERS_BY_KEY]
-    if unknown_keys:
-        raise ValueError(f"Unknown plot type(s): {', '.join(unknown_keys)}.")
-
-    builders: list[PlotlyCardBuilder] = []
-    for key in plot_keys:
-        builder = PLOTLY_BUILDERS_BY_KEY.get(key)
-        if builder and builder not in builders:
-            builders.append(builder)
-
-    return builders
+    plot_key = plot.strip()
+    builder = PLOTLY_BUILDERS_BY_KEY.get(plot_key)
+    if builder is None:
+        raise ValueError(f"Unknown plot type: {plot_key}.")
+    return builder
 
 
 def build_plot_options() -> list[dict[str, str]]:
