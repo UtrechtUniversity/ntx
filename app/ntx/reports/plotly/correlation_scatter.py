@@ -136,6 +136,7 @@ def _build_xy_scatter(
             title=escape_plot_text(f"{param_lookup[x_axis].label} (% of control)"),
             showgrid=True,
             zeroline=False,
+            domain=[0, 0.72],
         ),
         yaxis=dict(
             title=escape_plot_text(f"{param_lookup[y_axis].label} (% of control)"),
@@ -144,7 +145,8 @@ def _build_xy_scatter(
         ),
         hovermode="closest",
         showlegend=True,
-        legend=dict(yanchor="top", y=0.99, xanchor="right", x=0.99),
+        legend=dict(yanchor="top", y=1, xanchor="left", x=0.76, font=dict(size=10)),
+        margin=dict(l=70, r=20, t=30, b=80),
     )
     return fig
 
