@@ -130,23 +130,43 @@ def _build_xy_scatter(
             y_axis=y_axis,
             param_lookup=param_lookup,
         )
+    axis_values = [
+        value
+        for trace in fig.data
+        for values in (trace.x, trace.y)
+        for value in values
+        if value is not None
+    ]
+    axis_range = None
+    if axis_values:
+        min_value = min(axis_values)
+        max_value = max(axis_values)
+        padding = (max_value - min_value) * 0.05 or 1
+        axis_range = [min_value - padding, max_value + padding]
 
     fig.update_layout(
+        height=560,
         xaxis=dict(
             title=escape_plot_text(f"{param_lookup[x_axis].label} (% of control)"),
             showgrid=True,
             zeroline=False,
-            domain=[0, 0.72],
+            range=axis_range,
+            # domain=[0, 0.72],
+            # constrain="domain",
         ),
         yaxis=dict(
             title=escape_plot_text(f"{param_lookup[y_axis].label} (% of control)"),
             showgrid=True,
             zeroline=False,
+            range=axis_range,
+            # scaleanchor="x",
+            # scaleratio=1,
+            # constrain="domain",
         ),
         hovermode="closest",
         showlegend=True,
-        legend=dict(yanchor="top", y=1, xanchor="left", x=0.76, font=dict(size=10)),
-        margin=dict(l=70, r=20, t=30, b=80),
+        legend=dict(yanchor="top", y=1, xanchor="left", x=1.02, font=dict(size=10)),
+        margin=dict(l=70, r=180, t=30, b=80),
     )
     return fig
 

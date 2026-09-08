@@ -350,6 +350,7 @@
             </header>
             <div
               class="w-full min-h-80 mt-2"
+              :class="{ 'h-[640px]': card.meta && card.meta.plot_type === 'scatter' }"
               style="min-width: 0;"
               x-plotly="card"
             ></div>
