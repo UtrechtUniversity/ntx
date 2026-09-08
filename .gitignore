@@ -13,6 +13,8 @@ venv/
 # Django
 app/staticfiles/
 app/media/
+app/tmp/emails/*
+!app/tmp/emails/.gitkeep
 
 # IDE
 .vscode/

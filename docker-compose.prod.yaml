@@ -13,6 +13,13 @@ x-web-env: &web-env
   DJANGO_SUPERUSER_USERNAME: "${DJANGO_SUPERUSER_USERNAME:-admin}"
   DJANGO_SUPERUSER_PASSWORD: "${DJANGO_SUPERUSER_PASSWORD:-admin}"
   DJANGO_SUPERUSER_EMAIL: "${DJANGO_SUPERUSER_EMAIL:-}" # Optional
+  # Placeholder SMTP settings allow startup; configure real values to test delivery.
+  EMAIL_HOST: "${EMAIL_HOST:-smtp.invalid}"
+  EMAIL_PORT: "${EMAIL_PORT:-587}"
+  EMAIL_USE_TLS: "${EMAIL_USE_TLS:-True}"
+  EMAIL_HOST_USER: "${EMAIL_HOST_USER:-local-prod-unused}"
+  EMAIL_HOST_PASSWORD: "${EMAIL_HOST_PASSWORD:-local-prod-unused}"
+  DEFAULT_FROM_EMAIL: "${DEFAULT_FROM_EMAIL:-noreply@example.invalid}"
 
 services:
   db:

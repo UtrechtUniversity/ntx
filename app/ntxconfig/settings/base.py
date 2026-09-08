@@ -66,6 +66,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 # Custom user model for extensibility.
 AUTH_USER_MODEL = "ntx_users.User"
+LOGIN_REDIRECT_URL = "ntx:home"
 
 
 # Internationalization
@@ -93,3 +94,10 @@ MEDIA_ROOT = BASE_DIR / "media"
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# Development default: write emails to files instead of sending them.
+# Production overrides this with SMTP.
+EMAIL_BACKEND = "django.core.mail.backends.filebased.EmailBackend"
+EMAIL_FILE_PATH = BASE_DIR / "tmp" / "emails"
+DEFAULT_FROM_EMAIL = "ntx app <noreply@localhost>"
+EMAIL_TIMEOUT = 10  # Seconds for blocking SMTP operations.

@@ -63,3 +63,11 @@ STORAGES = {
         "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
     },
 }
+
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST = require_env("EMAIL_HOST")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", default=True)
+EMAIL_HOST_USER = require_env("EMAIL_HOST_USER")
+EMAIL_HOST_PASSWORD = require_env("EMAIL_HOST_PASSWORD")
+DEFAULT_FROM_EMAIL = require_env("DEFAULT_FROM_EMAIL")

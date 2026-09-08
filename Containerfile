@@ -103,6 +103,10 @@ ENV DJANGO_SETTINGS_MODULE=ntxconfig.settings.production
 RUN DJANGO_SECRET_KEY=build-time-collectstatic \
     ALLOWED_HOSTS=localhost \
     DATABASE_URL=sqlite:////tmp/collectstatic.sqlite3 \
+    EMAIL_HOST=smtp.invalid \
+    EMAIL_HOST_USER=build-time-collectstatic \
+    EMAIL_HOST_PASSWORD=build-time-collectstatic \
+    DEFAULT_FROM_EMAIL=noreply@example.invalid \
     python manage.py collectstatic --noinput
 
 # Keep application code immutable at runtime. Only media needs to be writable

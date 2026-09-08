@@ -2,3 +2,17 @@
 @source "../../templates/**/*.html";
 
 /* Custom global styles below */
+@layer components {
+  .auth-form label {
+    @apply mb-2 block text-sm font-medium text-slate-700;
+  }
+
+  .auth-form input:not([type="hidden"]) {
+    @apply block w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-slate-900;
+    @apply focus:border-slate-500 focus:outline-2 focus:outline-offset-2 focus:outline-slate-500;
+  }
+
+  .auth-form .errorlist {
+    @apply text-sm text-red-700;
+  }
+}
