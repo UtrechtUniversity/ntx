@@ -350,8 +350,11 @@
             </header>
             <div
               class="w-full min-h-80 mt-2"
-              :class="{ 'h-[640px]': card.meta && card.meta.plot_type === 'scatter' }"
-              style="min-width: 0;"
+              :style="card.meta && card.meta.plot_type === 'heatmap'
+                ? 'min-width: 0; height: 720px;'
+                : card.meta && card.meta.plot_type === 'scatter'
+                  ? 'min-width: 0; height: 640px;'
+                  : 'min-width: 0;'"
               x-plotly="card"
             ></div>
           </section>
