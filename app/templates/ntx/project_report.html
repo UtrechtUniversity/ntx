@@ -354,7 +354,9 @@
                 ? 'min-width: 0; height: 720px;'
                 : card.meta && card.meta.plot_type === 'scatter'
                   ? 'min-width: 0; height: 640px;'
-                  : 'min-width: 0;'"
+                  : card.meta && card.meta.plot_type === 'concentration_response'
+                    ? 'min-width: 0; height: 620px;'
+                    : 'min-width: 0;'"
               x-plotly="card"
             ></div>
           </section>

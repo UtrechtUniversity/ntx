@@ -218,8 +218,8 @@ def _build_param_figure(
 
     fig.update_layout(
         showlegend=True,
-        margin=dict(t=40, b=40, l=80, r=40),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+        margin=dict(t=80, b=60, l=80, r=40),
+        legend=dict(orientation="h", yanchor="bottom", y=1.03, xanchor="center", x=0.5, font=dict(size=10),),
     )
     fig.update_xaxes(
         title_text="Concentration", type="log", title_standoff=5, automargin=True, row=1, col=1
