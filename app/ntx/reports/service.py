@@ -60,10 +60,17 @@ def build_project_report_experiment_metadata_payload(
     frames = fetch_experiment_metrics_frames([selected_experiment.id])
     param_keys = sorted({param for frame in frames for param in frame.metrics.params})
     available_params = _build_available_params(build_param_infos(param_keys))
+
+    result = run_experiment_analysis(
+        [selected_experiment.id],
+        outlier_method=OutlierMethod(project.outlier_method),
+    )
+    available_wells = _build_active_well_options(selected_experiment, result)
+
     payload = ProjectReportExperimentMetadataPayload(
         selected_experiment=selected_experiment.id,
         available_params=available_params,
-        available_wells=_build_available_wells(selected_experiment),
+        available_wells=available_wells,
     )
     return payload.model_dump(mode="json")
 
@@ -124,13 +131,23 @@ def build_project_report_payload(
     else:
         experiment_ids = list(experiment_by_id)
 
+    selected_outlier_method = OutlierMethod(outlier_method or project.outlier_method)
+    result = run_experiment_analysis(experiment_ids, outlier_method=selected_outlier_method)
+
     normalized_selected_wells: list[str] | None = None
     normalized_selected_wells_mode: Literal["mean", "individual"] | None = None
+    active_wells: set[str] = set()
     if scatter_requested:
         if scatter_experiment is None:
             raise ValueError("Selected experiment does not belong to this project.")
-        normalized_selected_wells = _normalize_well_keys(selected_wells)
-        available_well_keys = {
+        active_wells = _build_active_well_keys(result)
+        if selected_wells is not None:
+            normalized_selected_wells = _normalize_well_keys(selected_wells)
+        elif active_wells:
+            normalized_selected_wells = sorted(active_wells)
+        else:
+            normalized_selected_wells = None
+        available_well_keys = active_wells or {
             well
             for condition in scatter_experiment.conditions.all()
             for well in condition.wells
@@ -150,9 +167,6 @@ def build_project_report_payload(
         normalized_selected_wells_mode = (
             "individual" if requested_wells_mode == "individual" else "mean"
         )
-
-    selected_outlier_method = OutlierMethod(outlier_method or project.outlier_method)
-    result = run_experiment_analysis(experiment_ids, outlier_method=selected_outlier_method)
 
     available_params = _build_available_params(result.labels.params)
     available_keys = [param.key for param in available_params]
@@ -180,7 +194,9 @@ def build_project_report_payload(
         {"id": item.id, "label": f"{item.code} ({item.pk})"} for item in experiments
     ]
     available_wells = (
-        _build_available_wells(scatter_experiment) if scatter_experiment is not None else []
+        _build_active_well_options(scatter_experiment, result)
+        if scatter_experiment is not None
+        else []
     )
     payload = ProjectReportPayload(
         cards=cards,
@@ -263,6 +279,41 @@ def _build_available_params(params: Sequence[ParamInfo]) -> list[PlotlyParamOpti
         PlotlyParamOption(key=param.key, label=param.label, section=param.section)
         for param in params
     ]
+
+
+def _build_active_well_keys(result: Any) -> set[str]:
+    active_wells: set[str] = set()
+    for record in result.post_outlier:
+        if record.div == 0 and record.value is not None and not record.is_inactive and not record.is_excluded:
+            active_wells.add(record.well)
+    return active_wells
+
+
+def _build_active_well_options(
+    experiment: Experiment,
+    result: Any,
+) -> list[PlotlyWellOption]:
+    active_wells = _build_active_well_keys(result)
+    if not active_wells:
+        return []
+
+    by_condition: dict[str, str] = {}
+    for condition in experiment.conditions.all():
+        condition_label = _condition_display_label(condition)
+        for well in condition.wells:
+            if isinstance(well, str):
+                by_condition[well] = condition_label
+
+    available_wells: list[PlotlyWellOption] = []
+    for well in sorted(active_wells):
+        condition_label = by_condition.get(well, "Unknown")
+        available_wells.append(
+            PlotlyWellOption(
+                key=well,
+                label=f"{well} ({condition_label})",
+            )
+        )
+    return available_wells
 
 
 def _build_available_wells(experiment: Experiment) -> list[PlotlyWellOption]:
