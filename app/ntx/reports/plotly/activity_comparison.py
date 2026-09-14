@@ -84,8 +84,8 @@ def _build_param_figure(
         )
 
     fig.update_layout(barmode="group", showlegend=False)
-    fig.update_xaxes(categoryorder="array", categoryarray=x_labels, tickangle=-30, automargin=True)
-    fig.update_yaxes(title_text="Treatment response (%)", rangemode="tozero", automargin=True)
+    fig.update_xaxes(categoryorder="array", categoryarray=x_labels, tickangle=-45, tickfont=dict(size=10), automargin=True)
+    fig.update_yaxes(title_text="Treatment response (%)", rangemode="tozero", tickfont=dict(size=10), automargin=True)
     return fig
 
 
