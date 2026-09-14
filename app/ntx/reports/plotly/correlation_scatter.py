@@ -130,19 +130,19 @@ def _build_xy_scatter(
             y_axis=y_axis,
             param_lookup=param_lookup,
         )
-    axis_values = [
-        value
-        for trace in fig.data
-        for values in (trace.x, trace.y)
-        for value in values
-        if value is not None
-    ]
-    axis_range = None
-    if axis_values:
-        min_value = min(axis_values)
-        max_value = max(axis_values)
-        padding = (max_value - min_value) * 0.05 or 1
-        axis_range = [min_value - padding, max_value + padding]
+    # axis_values = [
+    #     value
+    #     for trace in fig.data
+    #     for values in (trace.x, trace.y)
+    #     for value in values
+    #     if value is not None
+    # ]
+    # axis_range = None
+    # if axis_values:
+    #     min_value = min(axis_values)
+    #     max_value = max(axis_values)
+    #     padding = (max_value - min_value) * 0.05 or 1
+    #     axis_range = [min_value - padding, max_value + padding]
 
     fig.update_layout(
         height=560,
@@ -150,13 +150,16 @@ def _build_xy_scatter(
             title=escape_plot_text(f"{param_lookup[x_axis].label} (% of control)"),
             showgrid=True,
             zeroline=False,
-            range=axis_range,
+            # range=axis_range,
         ),
         yaxis=dict(
             title=escape_plot_text(f"{param_lookup[y_axis].label} (% of control)"),
             showgrid=True,
             zeroline=False,
-            range=axis_range,
+            scaleanchor="x",
+            scaleratio=1,
+            constrain="range",
+            # range=axis_range,
         ),
         hovermode="closest",
         showlegend=True,
