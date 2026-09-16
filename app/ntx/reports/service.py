@@ -101,10 +101,10 @@ def build_project_report_payload(
     all experiments in the project when no experiment is selected. Invalid plot, experiment,
     parameter, axis, well, display-mode, or outlier-method selections raise "ValueError".
     """
-    builders = select_plot_builders(plot)
-    scatter_requested = any(builder.key == "scatter" for builder in builders)
-    activity_comparison_requested = any(builder.key == "activity_comparison" for builder in builders)
-    param_selection_mode = builders[0].param_selection_mode.value
+    builder = select_plot_builder(plot)
+    scatter_requested = builder.key == "scatter"
+    activity_comparison_requested = builder.key == "activity_comparison"
+    param_selection_mode = builder.param_selection_mode.value
 
     normalized_activity_comparison_mode: Literal["bar", "jitter"] = "bar"
     if activity_comparison_mode is not None:
