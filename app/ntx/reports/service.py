@@ -14,7 +14,7 @@ from ntx.analysis.pipeline import (
 )
 from ntx.metrics_store import fetch_experiment_metrics_frames
 from ntx.models import Condition, Experiment, OutlierMethod, Project, _normalize_well
-from ntx.reports.plotly.builders import PlotlyBuildContext, select_plot_builders
+from ntx.reports.plotly.builders import PlotlyBuildContext, select_plot_builder
 from ntx.reports.plotly.contracts import (
     PlotlyCard,
     PlotlyParamOption,
@@ -188,9 +188,7 @@ def build_project_report_payload(
             color_by_experiment=bool(color_by_experiment),
         )
 
-    cards: list[PlotlyCard] = []
-    for builder in builders:
-        cards.extend(builder.build(result, context))
+    cards: list[PlotlyCard] = builder.build(result, context)
 
     available_experiments = [
         {"id": item.id, "label": f"{item.code} ({item.pk})"} for item in experiments

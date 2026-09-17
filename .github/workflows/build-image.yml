@@ -60,6 +60,7 @@ jobs:
       - name: Verify the image starts as non-root and not as any other user known to the container (ie. 1000=app)
         run: |
           docker pull "${IMAGE_NAME}:${GITHUB_SHA}"
+          # Supply placeholder email settings required by production image
           set +e
           timeout 7 docker run --rm \
             -u 1001:0 \
@@ -67,6 +68,10 @@ jobs:
             -e DJANGO_SECRET_KEY=ci-smoke \
             -e ALLOWED_HOSTS=localhost \
             -e DATABASE_URL=sqlite:////tmp/smoke.sqlite3 \
+            -e EMAIL_HOST=smtp.invalid \
+            -e EMAIL_HOST_USER=ci-smoke \
+            -e EMAIL_HOST_PASSWORD=ci-smoke \
+            -e DEFAULT_FROM_EMAIL=noreply@example.invalid \
             -e DJANGO_SUPERUSER_USERNAME=ci-admin \
             -e DJANGO_SUPERUSER_PASSWORD="${GITHUB_SHA}" \
             "${IMAGE_NAME}:${GITHUB_SHA}"
