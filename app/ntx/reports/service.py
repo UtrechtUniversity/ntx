@@ -6,7 +6,7 @@ from typing import Any, Literal
 
 from django.db.models import Prefetch
 
-from ntx.analysis.dtos import ParamInfo
+from ntx.analysis.dtos import AnalysisPipelineResult, ParamInfo
 from ntx.analysis.pipeline import (
     _condition_display_label,
     build_param_infos,
@@ -147,14 +147,14 @@ def build_project_report_payload(
             normalized_selected_wells = sorted(active_wells)
         else:
             normalized_selected_wells = None
-        available_well_keys = active_wells or {
-            well
-            for condition in scatter_experiment.conditions.all()
-            for well in condition.wells
-            if isinstance(well, str)
-        }
+        # available_well_keys = active_wells or {
+        #     well
+        #     for condition in scatter_experiment.conditions.all()
+        #     for well in condition.wells
+        #     if isinstance(well, str)
+        # }
         unknown_wells = [
-            well for well in normalized_selected_wells or [] if well not in available_well_keys
+            well for well in normalized_selected_wells or [] if well not in active_wells
         ]
         if unknown_wells:
             raise ValueError(
@@ -283,17 +283,17 @@ def _build_available_params(params: Sequence[ParamInfo]) -> list[PlotlyParamOpti
     ]
 
 
-def _build_active_well_keys(result: Any) -> set[str]:
+def _build_active_well_keys(result: AnalysisPipelineResult) -> set[str]:
     active_wells: set[str] = set()
-    for record in result.post_outlier:
-        if record.div == 0 and record.value is not None and not record.is_inactive and not record.is_excluded:
+    for record in result.pre_outlier:
+        if record.div == 0 and not record.is_inactive and not record.is_excluded:
             active_wells.add(record.well)
     return active_wells
 
 
 def _build_active_well_options(
     experiment: Experiment,
-    result: Any,
+    result: AnalysisPipelineResult,
 ) -> list[PlotlyWellOption]:
     active_wells = _build_active_well_keys(result)
     if not active_wells:
