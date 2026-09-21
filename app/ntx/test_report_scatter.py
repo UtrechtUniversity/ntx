@@ -348,6 +348,55 @@ def test_report_metadata_api_is_experiment_scoped_without_axes(client, scatter_a
     }
 
 
+@pytest.mark.parametrize("endpoint", ["project_report_metadata_api", "project_report_api"])
+def test_scatter_options_keep_baseline_active_wells_with_missing_exposure(
+    client, scatter_api_data, endpoint
+):
+    project, selected, _, _ = scatter_api_data
+    frame = NeuronalMetricsFrame.objects.get(experiment=selected)
+    well_index = frame.metrics_json["wells"].index("B1")
+    # B1 still passes baseline QC, even though its exposure measurements are missing.
+    for field in ("exposure", "ratio"):
+        for row in frame.metrics_json[field]:
+            row[well_index] = None
+    frame.save(update_fields=["metrics_json"])
+
+    url = reverse(f"ntx:{endpoint}", kwargs={"slug": project.slug})
+    params = (
+        _scatter_params(selected)
+        if endpoint == "project_report_api"
+        else {"experiment": selected.id}
+    )
+    response = client.get(url, params)
+
+    assert response.status_code == 200
+    assert {item["key"] for item in response.json()["available_wells"]} == {
+        "A1",
+        "A2",
+        "B1",
+        "B2",
+    }
+
+
+def test_scatter_api_rejects_selected_well_when_all_wells_fail_baseline_qc(
+    client, scatter_api_data
+):
+    project, selected, _, _ = scatter_api_data
+    frame = NeuronalMetricsFrame.objects.get(experiment=selected)
+    # Four active electrodes fails the threshold for baseline QC.
+    frame.qc_json["number_of_active_electrodes"] = [4] * len(frame.qc_json["wells"])
+    frame.save(update_fields=["qc_json"])
+
+    url = reverse("ntx:project_report_api", kwargs={"slug": project.slug})
+    params = _scatter_params(selected)
+    response = client.get(url, params)
+    assert response.status_code == 200
+    assert response.json()["available_wells"] == []
+
+    selected_response = client.get(url, {**params, "wells": "B1"})
+    assert selected_response.status_code == 400
+
+
 def test_report_metadata_api_rejects_invalid_experiments(client, scatter_api_data):
     project, _, _, foreign = scatter_api_data
     url = reverse("ntx:project_report_metadata_api", kwargs={"slug": project.slug})
