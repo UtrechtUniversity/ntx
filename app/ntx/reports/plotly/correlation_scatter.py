@@ -132,19 +132,26 @@ def _build_xy_scatter(
         )
 
     fig.update_layout(
+        height=560,
         xaxis=dict(
             title=escape_plot_text(f"{param_lookup[x_axis].label} (% of control)"),
             showgrid=True,
             zeroline=False,
+            # range=axis_range,
         ),
         yaxis=dict(
             title=escape_plot_text(f"{param_lookup[y_axis].label} (% of control)"),
             showgrid=True,
             zeroline=False,
+            scaleanchor="x",
+            scaleratio=1,
+            constrain="range",
+            # range=axis_range,
         ),
         hovermode="closest",
         showlegend=True,
-        legend=dict(yanchor="top", y=0.99, xanchor="right", x=0.99),
+        legend=dict(yanchor="top", y=1, xanchor="left", x=1.02, font=dict(size=10)),
+        margin=dict(l=70, r=180, t=30, b=80),
     )
     return fig
 

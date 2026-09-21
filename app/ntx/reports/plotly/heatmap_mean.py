@@ -87,20 +87,17 @@ def _build_param_condition_heatmap(
             z=z_matrix,
             text=count_matrix,
             texttemplate="%{text}",
-            textfont=dict(color="black"),
+            textfont=dict(color="black", size=10),
             colorbar=dict(title="Response (%)"),
             hovertemplate=("Condition: %{y}<br>Param: %{x}<br>Value: %{z:.2f}%<extra></extra>"),
         )
     )
 
     fig.update_layout(
-        xaxis=dict(title="Parameters"),
-        yaxis=dict(title="Concentration / Condition"),
+        xaxis=dict(title="Parameters", tickangle=-45, tickfont=dict(size=10)),
+        yaxis=dict(title="Concentration / Condition", tickfont=dict(size=10)),
+        margin=dict(l=120, r=60, t=30, b=120),
     )
-    # fig.update_layout(
-    #     height=max(400, 40 * len(conditions)),
-    #     margin=dict(l=120, r=40, t=60, b=80),
-    # )
 
     return fig
 
