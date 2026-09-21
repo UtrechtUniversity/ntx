@@ -130,19 +130,6 @@ def _build_xy_scatter(
             y_axis=y_axis,
             param_lookup=param_lookup,
         )
-    # axis_values = [
-    #     value
-    #     for trace in fig.data
-    #     for values in (trace.x, trace.y)
-    #     for value in values
-    #     if value is not None
-    # ]
-    # axis_range = None
-    # if axis_values:
-    #     min_value = min(axis_values)
-    #     max_value = max(axis_values)
-    #     padding = (max_value - min_value) * 0.05 or 1
-    #     axis_range = [min_value - padding, max_value + padding]
 
     fig.update_layout(
         height=560,
