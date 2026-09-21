@@ -147,12 +147,6 @@ def build_project_report_payload(
             normalized_selected_wells = sorted(active_wells)
         else:
             normalized_selected_wells = None
-        # available_well_keys = active_wells or {
-        #     well
-        #     for condition in scatter_experiment.conditions.all()
-        #     for well in condition.wells
-        #     if isinstance(well, str)
-        # }
         unknown_wells = [
             well for well in normalized_selected_wells or [] if well not in active_wells
         ]
