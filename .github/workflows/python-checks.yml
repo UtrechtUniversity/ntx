@@ -1,0 +1,60 @@
+name: Python checks
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  python-checks:
+    name: Lint, format, types, and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        shell: bash
+        working-directory: app
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.12.17"
+          enable-cache: true
+          cache-dependency-glob: "app/requirements/*.txt"
+
+      - name: Install dependencies
+        id: dependencies
+        run: |
+          uv venv --python 3.14 .venv
+          uv pip sync --python .venv/bin/python requirements/dev.txt
+
+      # Run every check after successful setup, even if an earlier check failed.
+      # Each failure still fails the job; cancellation skips remaining checks.
+      - name: Ruff lint
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        run: .venv/bin/ruff check
+
+      - name: Ruff format
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        run: .venv/bin/ruff format --check
+
+      - name: Type check
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        run: .venv/bin/ty check
+
+      - name: Tests
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        run: .venv/bin/pytest
