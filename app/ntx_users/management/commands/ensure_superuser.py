@@ -11,7 +11,7 @@ from ntx_users.models import User
 class Command(BaseCommand):
     help = "Create the configured Django superuser if it does not already exist"
 
-    def handle(self, *args, **options):
+    def handle(self, *args, **options) -> None:
         username = self._required_env("DJANGO_SUPERUSER_USERNAME")
         password = self._required_env("DJANGO_SUPERUSER_PASSWORD")
         email = os.getenv("DJANGO_SUPERUSER_EMAIL", "")

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import math
 import numbers
-from typing import Sequence, cast
+from typing import Self, Sequence, cast
 
 from pydantic import (
     BaseModel,
@@ -31,7 +31,7 @@ Numeric = int | float | None
 Matrix = list[list[Numeric]]
 
 
-def _validate_numeric_row(values: Sequence[Numeric], expected_length: int, label: str):
+def _validate_numeric_row(values: Sequence[Numeric], expected_length: int, label: str) -> None:
     if len(values) != expected_length:
         raise ValueError(f"{label} must contain {expected_length} values")
 
@@ -64,7 +64,7 @@ class MetricsPayload(BaseModel):
     # Field-level check: params/wells lists must not be empty.
     @field_validator("params", "wells")
     @classmethod
-    def _ensure_non_empty(cls, value: list[str], info: ValidationInfo):
+    def _ensure_non_empty(cls, value: list[str], info: ValidationInfo) -> list[str]:
         if not value:
             raise ValueError(f"{info.field_name} must not be empty")
         return value
@@ -78,7 +78,7 @@ class MetricsPayload(BaseModel):
     # Model-level check: enforce matrix shapes match params x wells,
     # after the field-level checks.
     @model_validator(mode="after")
-    def _validate_shapes(self):
+    def _validate_shapes(self) -> Self:
         params_count = len(self.params)
         wells_count = len(self.wells)
 
@@ -97,7 +97,7 @@ class MetricsPayload(BaseModel):
         params_count: int,
         wells_count: int,
         label: str,
-    ):
+    ) -> None:
         if len(matrix) != params_count:
             raise ValueError(f"{label} must have {params_count} rows (one per param)")
 
@@ -122,7 +122,7 @@ class MetricsQcPayload(BaseModel):
 
     @field_validator("wells")
     @classmethod
-    def _ensure_non_empty(cls, value: list[str], info: ValidationInfo):
+    def _ensure_non_empty(cls, value: list[str], info: ValidationInfo) -> list[str]:
         if not value:
             raise ValueError(f"{info.field_name} must not be empty")
         return value
@@ -133,7 +133,7 @@ class MetricsQcPayload(BaseModel):
         return [item.strip() for item in value]
 
     @model_validator(mode="after")
-    def _validate_shapes(self):
+    def _validate_shapes(self) -> Self:
         wells_count = len(self.wells)
         for label, values in (
             ("number_of_active_electrodes", self.number_of_active_electrodes),

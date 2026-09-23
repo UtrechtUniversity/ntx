@@ -78,7 +78,7 @@ def build_project_report_experiment_metadata_payload(
 def build_project_report_payload(
     project: Project,
     *,
-    plot: str,
+    plot: str | None,
     params: Sequence[str] | None = None,
     x_axis: str | None = None,
     y_axis: str | None = None,

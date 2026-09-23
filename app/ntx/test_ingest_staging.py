@@ -191,6 +191,7 @@ def test_execute_ingest_marks_staged_validation_failure_as_error(
 def test_admin_promotion_reports_attempted_failures_separately(
     stored_data_dir: Path,
     media_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ):
     failed_ingest = _create_invalid_parsed_ingest(
         stored_data_dir=stored_data_dir,
@@ -218,7 +219,7 @@ def test_admin_promotion_reports_attempted_failures_separately(
     ) -> None:
         captured.append((message, level))
 
-    model_admin.message_user = MethodType(capture_message, model_admin)
+    monkeypatch.setattr(model_admin, "message_user", MethodType(capture_message, model_admin))
 
     model_admin._promote_to_experiment(
         request,

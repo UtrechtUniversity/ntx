@@ -6,7 +6,7 @@ exclude = ["**/migrations/**"]
 
 [tool.ruff.lint]
 # Basic checks + imports + Django-specific rules
-select = ["E", "F", "I", "DJ"]
+select = ["E", "F", "I", "DJ", "W605"]
 
 [tool.ruff.format]
 # Use double quotes by default
@@ -19,7 +19,12 @@ indent-style = "space"
 docstring-code-format = true
 line-ending = "lf"
 
-[tool.pyright]
+[tool.ty.environment]
+python = ".venv"
+python-version = "3.14"
+python-platform = "linux"
+
+[tool.ty.src]
 include = [
     "manage.py",
     "ntx",
@@ -27,17 +32,17 @@ include = [
     "ntxconfig",
 ]
 exclude = [
-    "**/migrations",
-    "**/__pycache__",
+    "**/migrations/**",
+    "**/__pycache__/**",
 ]
-defineConstant = { DEBUG = true }
+respect-ignore-files = false
 
-reportMissingImports = "error"
+[tool.ty.rules]
+unresolved-import = "error"
+possibly-unresolved-reference = "error"
 
-pythonVersion = "3.14"
-pythonPlatform = "Linux"
-venvPath = "."
-venv = ".venv"
+[tool.ty.terminal]
+error-on-warning = false
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "ntxconfig.settings.local"
