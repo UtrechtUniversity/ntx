@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import csv
 from pathlib import Path
-from typing import cast
 
 import pytest
 
@@ -107,8 +106,8 @@ def test_create_experiment_from_real_folder(stored_data_dir: Path):
     assert len(payload.wells) == experiment.well_count
     assert set(payload.wells) == set(all_wells)
 
-    baseline_matrix = cast(list[list[float | int | None]], payload.baseline)
-    ratio_matrix = cast(list[list[float | int | None]], payload.ratio)
+    baseline_matrix = payload.baseline
+    ratio_matrix = payload.ratio
 
     baseline_values = [value for row in baseline_matrix for value in row]
     assert any(value is not None for value in baseline_values)

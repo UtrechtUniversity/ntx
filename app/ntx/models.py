@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
@@ -62,7 +62,7 @@ class TimeStampedModel(models.Model):
     class Meta:
         abstract = True
 
-    def save(self, *args, **kwargs):
+    def save(self, *args, **kwargs) -> None:
         """
         Validate models on save.
         """
@@ -130,7 +130,7 @@ class Project(TimeStampedModel):
     def __str__(self) -> str:
         return self.name
 
-    def save(self, *args, **kwargs):
+    def save(self, *args, **kwargs) -> None:
         if not self.slug and self.name:
             self.slug = _generate_unique_slug(self, self.name)
         super().save(*args, **kwargs)
@@ -148,12 +148,12 @@ class CanonicalMixin(models.Model):
     class Meta:
         abstract = True
 
-    def clean(self):
+    def clean(self) -> None:
         super().clean()
         self._validate_canonical_root()
         self._validate_canonical_chain()
 
-    def _validate_canonical_root(self):
+    def _validate_canonical_root(self) -> None:
         canonical = getattr(self, "canonical", None)
         if canonical is None:
             return
@@ -162,7 +162,7 @@ class CanonicalMixin(models.Model):
                 {"canonical": "Canonical must reference a canonical record (canonical is None)."}
             )
 
-    def _validate_canonical_chain(self):
+    def _validate_canonical_chain(self) -> None:
         current: "CanonicalMixin | None" = getattr(self, "canonical", None)
         if current is None:
             return
@@ -177,7 +177,7 @@ class CanonicalMixin(models.Model):
                 seen.add(current.pk)
             current = getattr(current, "canonical", None)
 
-    def canonical_or_self(self):
+    def canonical_or_self(self) -> Self:
         return self.canonical or self
 
 
@@ -198,7 +198,7 @@ class Chemical(CanonicalMixin, TimeStampedModel):
     def __str__(self) -> str:
         return self.name
 
-    def save(self, *args, **kwargs):
+    def save(self, *args, **kwargs) -> None:
         if not self.slug and self.name:
             self.slug = _generate_unique_slug(self, self.name)
         super().save(*args, **kwargs)
@@ -221,7 +221,7 @@ class ConcentrationUnit(CanonicalMixin, TimeStampedModel):
     def __str__(self) -> str:
         return self.symbol or self.name
 
-    def save(self, *args, **kwargs):
+    def save(self, *args, **kwargs) -> None:
         if not self.slug and (self.symbol or self.name):
             self.slug = _generate_unique_slug(self, self.symbol or self.name)
         super().save(*args, **kwargs)
@@ -345,7 +345,7 @@ class Condition(TimeStampedModel):
     def __str__(self) -> str:
         return self.name
 
-    def clean(self):
+    def clean(self) -> None:
         super().clean()
 
         duplicate_qs = Condition.objects.filter(
@@ -431,7 +431,7 @@ class NeuronalMetricsFrame(TimeStampedModel):
     def __str__(self) -> str:
         return f"Metrics for {self.experiment.code} (DIV {self.div})"
 
-    def clean(self):
+    def clean(self) -> None:
         super().clean()
         # Ensure metrics_json and qc_json match their Pydantic contracts before saving.
         # JSON/JSONB cannot represent NaN/Inf; store missing/unusable as null.

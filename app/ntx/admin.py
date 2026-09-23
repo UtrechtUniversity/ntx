@@ -4,7 +4,7 @@ import io
 import json
 import zipfile
 from collections.abc import Sequence
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from django import forms
 from django.contrib import admin, messages
@@ -31,6 +31,9 @@ from .models import (
     Project,
 )
 from .utils import normalize_decimals
+
+if TYPE_CHECKING:
+    from django.contrib.admin.options import _FieldsetSpec
 
 Numeric = float | int | None
 
@@ -123,16 +126,16 @@ class ReadOnlyAdminMixin:
 
     actions = None
 
-    def has_add_permission(self, request, obj=None):
+    def has_add_permission(self, request, obj=None) -> bool:
         return False
 
-    def has_change_permission(self, request, obj=None):
+    def has_change_permission(self, request, obj=None) -> bool:
         return False
 
-    def has_delete_permission(self, request, obj=None):
+    def has_delete_permission(self, request, obj=None) -> bool:
         return False
 
-    def has_view_permission(self, request, obj=None):
+    def has_view_permission(self, request, obj=None) -> bool:
         return True
 
     def get_readonly_fields(self, request, obj=None) -> list[str]:
@@ -160,7 +163,7 @@ class ProjectAdmin(admin.ModelAdmin):
     readonly_fields = ("created_at", "updated_at")
     filter_horizontal = ("collaborators",)
 
-    def get_queryset(self, request):
+    def get_queryset(self, request) -> models.QuerySet[Project]:
         qs = super().get_queryset(request)
         return qs.annotate(
             _experiments_count=Count("experiments", distinct=True),
@@ -168,11 +171,11 @@ class ProjectAdmin(admin.ModelAdmin):
         )
 
     @admin.display(description="Experiments")
-    def experiments_count(self, obj):
+    def experiments_count(self, obj) -> int:
         return getattr(obj, "_experiments_count", 0)
 
     @admin.display(description="Collaborators")
-    def collaborators_count(self, obj):
+    def collaborators_count(self, obj) -> int:
         return getattr(obj, "_collaborators_count", 0)
 
 
@@ -182,7 +185,7 @@ class ChemicalAdmin(admin.ModelAdmin):
     search_fields = ("name", "slug", "description")
     readonly_fields = ("created_at", "updated_at")
 
-    def get_queryset(self, request):
+    def get_queryset(self, request) -> models.QuerySet[Chemical]:
         qs = super().get_queryset(request)
         return qs.annotate(
             _conditions_count=Count("conditions", distinct=True),
@@ -190,11 +193,11 @@ class ChemicalAdmin(admin.ModelAdmin):
         )
 
     @admin.display(description="Conditions")
-    def conditions_count(self, obj):
+    def conditions_count(self, obj) -> int:
         return getattr(obj, "_conditions_count", 0)
 
     @admin.display(description="Experiments")
-    def experiments_count(self, obj):
+    def experiments_count(self, obj) -> int:
         return getattr(obj, "_experiments_count", 0)
 
 
@@ -204,14 +207,14 @@ class ConcentrationUnitAdmin(admin.ModelAdmin):
     search_fields = ("name", "slug", "symbol")
     readonly_fields = ("created_at", "updated_at")
 
-    def get_queryset(self, request):
+    def get_queryset(self, request) -> models.QuerySet[ConcentrationUnit]:
         qs = super().get_queryset(request)
         return qs.annotate(
             _conditions_count=Count("conditions", distinct=True),
         )
 
     @admin.display(description="Conditions")
-    def conditions_count(self, obj):
+    def conditions_count(self, obj) -> int:
         return getattr(obj, "_conditions_count", 0)
 
 
@@ -233,7 +236,7 @@ class ExperimentAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
 
 
 class ExperimentIngestGroupInlineForm(forms.ModelForm):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         value = self.instance.concentration
         if value is not None and not self.is_bound:
@@ -277,14 +280,14 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
     search_fields = ("code", "chemical", "cell_line", "experimenter")
     readonly_fields = ("status", "error_message", "created_at", "updated_at")
 
-    add_fieldsets = (
+    add_fieldsets: _FieldsetSpec = (
         (
             "Uploads",
             {"fields": ("project", "layout_file", "baseline_csv", "exposure_csv")},
         ),
     )
 
-    change_fieldsets = (
+    change_fieldsets: _FieldsetSpec = (
         ("Logs", {"fields": ("error_message",)}),
         ("Status", {"fields": ("status", "submission_method", "created_at", "updated_at")}),
         ("Uploads", {"fields": ("layout_file", "baseline_csv", "exposure_csv")}),
@@ -314,17 +317,17 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
         "download_parsed_metadata",
     ]
 
-    def get_fieldsets(self, request, obj=None):  # type: ignore[override]
+    def get_fieldsets(self, request, obj=None) -> _FieldsetSpec:
         # obj is None → add view; obj is not None → change view
         return self.add_fieldsets if obj is None else self.change_fieldsets
 
-    def get_inlines(self, request, obj=None):
+    def get_inlines(self, request, obj=None) -> tuple[type[ExperimentIngestGroupInline], ...]:
         if obj is None:
             return ()
         return (ExperimentIngestGroupInline,)
 
     @admin.action(description="Parse/reparse selected uploads")
-    def parse_selected_uploads(self, request, queryset):
+    def parse_selected_uploads(self, request, queryset) -> None:
         parsed = 0
         failed = 0
 
@@ -342,14 +345,14 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
         )
 
     @admin.action(description="Promote selected ingests to Experiments")
-    def promote_to_experiment(self, request, queryset):
+    def promote_to_experiment(self, request, queryset) -> None:
         self._promote_to_experiment(request, queryset, replace_existing=False)
 
     @admin.action(description="Promote selected ingests, replacing existing Experiments")
-    def promote_to_experiment_replacing_existing(self, request, queryset):
+    def promote_to_experiment_replacing_existing(self, request, queryset) -> None:
         self._promote_to_experiment(request, queryset, replace_existing=True)
 
-    def _promote_to_experiment(self, request, queryset, *, replace_existing: bool):
+    def _promote_to_experiment(self, request, queryset, *, replace_existing: bool) -> None:
         created = 0
         skipped = 0
         failed = 0
@@ -373,7 +376,7 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
         )
 
     @admin.action(description="Download ingest records as JSON for selected ingests")
-    def download_parsed_metadata(self, request, queryset):
+    def download_parsed_metadata(self, request, queryset) -> HttpResponse | None:
         """Create a zip containing the ExperimentIngest row data (all table fields) as JSON.
 
         Every selected ingest must have a code. Each produces `<code>_ingest.json`.
@@ -414,7 +417,7 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
         resp["Content-Disposition"] = "attachment; filename=ingest_records.zip"
         return resp
 
-    def save_model(self, request, obj, form, change):
+    def save_model(self, request, obj, form, change) -> None:
         """
         Control when parsing happens:
 
@@ -461,14 +464,14 @@ class ConditionAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     ordering = ("-is_control", "concentration", "name")
 
     @admin.display(description="Concentration", ordering="concentration")
-    def formatted_concentration(self, obj):
+    def formatted_concentration(self, obj) -> str:
         value = obj.concentration
         if value is None:
             return "-"
         return normalize_decimals(value)
 
     @admin.display(description="Wells")
-    def well_count(self, obj):
+    def well_count(self, obj) -> int:
         wells = getattr(obj, "wells", None)
         if not isinstance(wells, list):
             return 0

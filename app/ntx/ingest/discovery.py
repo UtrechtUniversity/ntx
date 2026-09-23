@@ -292,7 +292,7 @@ def _normalize_measurement(value: str | None) -> str | None:
 
 
 class DiscoveryError(Exception):
-    def __init__(self, folder: Path, message: str):
+    def __init__(self, folder: Path, message: str) -> None:
         self.folder = Path(folder)
         super().__init__(f"{self.folder}: {message}")
 

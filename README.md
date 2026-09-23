@@ -106,8 +106,8 @@ ruff check
 # Use Ruff formatter
 ruff format
 
-# Use Pyright type checking
-pyright
+# Run type checking from the app directory with its venv activated
+ty check
 
 # Run the tests from the app dir
 # for pytest to discover the configuration

@@ -16,7 +16,7 @@ from ntx.models import Chemical, Project
 class Command(BaseCommand):
     help = "Import Axion MEA exports from a folder"
 
-    def add_arguments(self, parser):
+    def add_arguments(self, parser) -> None:
         parser.add_argument("path", help="Folder containing layout + baseline/exposure CSVs")
         parser.add_argument(
             "--project",
@@ -58,7 +58,7 @@ class Command(BaseCommand):
             ),
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *args, **options) -> None:
         source_path = Path(options["path"])
         project_slug = options["project"]
         dry_run = options["dry_run"]
@@ -159,7 +159,7 @@ class Command(BaseCommand):
         )
         return dest_path
 
-    def _print_summary(self, experiment_folder):
+    def _print_summary(self, experiment_folder) -> None:
         metadata = experiment_folder.metadata or parse_filename_metadata(
             experiment_folder.baseline_csv
         )
