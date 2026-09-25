@@ -29,15 +29,29 @@ function projectReport(options = {}) {
     plotOptions: Array.isArray(options.plotOptions) ? options.plotOptions : [], // Options for selector.
     plot: typeof options.plot === "string" ? options.plot : "", // Current plot key.
     experiments: Array.isArray(options.experiments) ? options.experiments : [], // Experiment options for selector
-    selectedExperiment:
-      Array.isArray(options.experiments) && options.experiments.length > 0
-        ? options.experiments[0].id
-        : null, // Selected experiment id.
+    selectedExperiment: (() => {
+      // Initial default depends on which plot the page is landing on:
+      // scatter (xy_axes) can't function with "All experiments" - it needs
+      // one real id - while bar/jitter/heatmap/concentration-response
+      // (multiple) default to "" (All), matching today's existing behavior
+      // where those reports were never scoped to a single experiment.
+      const initialExperiments = Array.isArray(options.experiments) ? options.experiments : [];
+      if (initialExperiments.length === 0) {
+        return null;
+      }
+      const initialPlotOptions = Array.isArray(options.plotOptions) ? options.plotOptions : [];
+      const initialPlotOption = initialPlotOptions.find((opt) => opt.value === options.plot);
+      const initialMode = initialPlotOption ? initialPlotOption.param_selection_mode : "multiple";
+      return initialMode === "xy_axes" ? initialExperiments[0].id : "";
+    })(), // Selected experiment id, or "" for All experiments (multiple-mode reports only).
     outlierMethod: typeof options.outlierMethod === "string" ? options.outlierMethod : "",
     availableParams: [], // Parameter options returned by the report API.
     defaultSelectedParams: [], // Backend-provided default parameter keys.
     selectedParams: [], // Active parameter keys used for rendering.
     paramSelectionMode: "multiple", // Mode for parameter selection (multiple or xy_axes).
+    activityComparisonMode: "bar", // Display mode for the activity_comparison plot ("bar" or "jitter").
+    colorByExperiment: false, // Whether to color points by experiment in jitter mode
+    experimentLegend: [], // Shared {experiment_id, label, color} entries for the one legend rendered outside the plot frames.
     xAxis: "", // Selected X-axis parameter for scatter plot.
     yAxis: "", // Selected Y-axis parameter for scatter plot.
     selectedWells: [], // Selected wells for scatter plot (empty = all wells, single/multiple = subset).
@@ -83,6 +97,16 @@ function projectReport(options = {}) {
       return Array.from(groupsBySection.values());
     },
 
+    get canColorByExperiment() {
+      // Only allow coloring by experiment for the activity_comparison plot when
+      // in jitter mode across multiple experiments (i.e. not scoped to one).
+      return (
+        this.plot === "activity_comparison" &&
+        this.activityComparisonMode === "jitter" &&
+        (this.selectedExperiment === "" || this.selectedExperiment === null)
+      );
+    },
+
     filteredXParams() {
       if (this.xAxisSearch.length === 0) {
         return [];
@@ -114,6 +138,10 @@ function projectReport(options = {}) {
     getParamSection(key) {
       const param = this.availableParams.find((p) => p.key === key);
       return param ? param.section : "";
+    },
+    getExperimentLabel(experimentId) {
+      const exp = this.experiments.find((e) => Number(e.id) === Number(experimentId));
+      return exp ? exp.label : `Experiment ${experimentId}`;
     },
 
     syncAxisSearchText() {
@@ -180,6 +208,12 @@ function projectReport(options = {}) {
           this.selectedWells = [];
           this.availableWells = [];
           this.availableWellsExperiment = null;
+          // Scatter can't work with "All experiments" ("") - if the user
+          // previously had that selected while on a multiple-mode report,
+          // fall back to the first available experiment so it can load.
+          if (!this.selectedExperiment && this.experiments.length > 0) {
+            this.selectedExperiment = this.experiments[0].id;
+          }
           return true;
         }
       }
@@ -198,12 +232,21 @@ function projectReport(options = {}) {
     },
 
     experimentChanged() {
-      this.selectedWells = [];
-      this.availableParams = [];
-      this.availableWells = [];
-      this.availableWellsExperiment = null;
-      this.cards = [];
-      this.loadExperimentMetadata();
+      if (this.paramSelectionMode === "xy_axes") {
+        this.selectedWells = [];
+        this.availableParams = [];
+        this.availableWells = [];
+        this.availableWellsExperiment = null;
+        this.cards = [];
+        this.loadExperimentMetadata();
+      } else {
+        // Multiple-mode reports (bar/jitter, heatmap, concentration-response)
+        // already get available_params back from the main report payload for
+        // whichever experiment(s) are in scope, so there's no separate
+        // metadata round-trip needed here - just re-fetch the report.
+        this.cards = [];
+        this.load();
+      }
     },
 
     clearExperimentMetadata() {
@@ -323,13 +366,26 @@ function projectReport(options = {}) {
         if (this.selectedParams.length > 0) {
           url.searchParams.set("params", this.selectedParams.join(","));
         }
+        if (this.plot === "activity_comparison") {
+          url.searchParams.set("activity_comparison_mode", this.activityComparisonMode);
+        }
       }
 
       // Plot is required by the API, so always include a valid selection.
       url.searchParams.set("plot", this.plot);
-      // Scatter plots are always scoped to one experiment.
-      if (this.paramSelectionMode === "xy_axes" && this.selectedExperiment) {
+      // Only activity_comparison and scatter are scoped to a specific
+      // experiment. Heatmap and concentration-response always analyze every
+      // experiment in the project - never send the filter for them, even if
+      // selectedExperiment holds a real id left over from switching tabs
+      // after using it on activity_comparison or scatter.
+      const experimentScopedPlot =
+        this.plot === "activity_comparison" || this.paramSelectionMode === "xy_axes";
+      if (experimentScopedPlot && this.selectedExperiment) {
         url.searchParams.set("experiment", String(this.selectedExperiment));
+      }
+      // Allow the jitter plot to request coloring by experiment.
+      if (this.plot === "activity_comparison" && this.colorByExperiment) {
+        url.searchParams.set("color_by_experiment", "true");
       }
       url.searchParams.set("outlier_method", this.outlierMethod);
       return url;
@@ -355,6 +411,10 @@ function projectReport(options = {}) {
       this.experiments = Array.isArray(payload.available_experiments)
         ? payload.available_experiments
         : this.experiments;
+      // selected_experiment is omitted by the backend entirely (exclude_none)
+      // when the report was scoped to "All experiments" - so this correctly
+      // leaves this.selectedExperiment (e.g. "") untouched in that case,
+      // rather than only reflecting a real id back when one was chosen.
       if (payload.selected_experiment) {
         this.selectedExperiment = payload.selected_experiment;
         this.availableWells = Array.isArray(payload.available_wells)
@@ -368,6 +428,18 @@ function projectReport(options = {}) {
         this.selectedWells = [];
       }
       this.selectedWellsMode = payload.selected_wells_mode || "mean";
+      // Only update activityComparisonMode if the backend explicitly
+      // returned it. Avoid overwriting the user's current selection when
+      // the response omits this field (which previously forced it back
+      // to "bar").
+      if (Object.prototype.hasOwnProperty.call(payload, 'activity_comparison_mode')) {
+        this.activityComparisonMode = payload.activity_comparison_mode;
+      }
+      // Read back whether the backend considered coloring by experiment
+      // so the UI reflects server-side decisions (or defaults).
+      if (Object.prototype.hasOwnProperty.call(payload, 'color_by_experiment')) {
+        this.colorByExperiment = Boolean(payload.color_by_experiment);
+      }
     },
 
     async load() {
@@ -442,6 +514,13 @@ function projectReport(options = {}) {
       // Normalize response payload so the template can render safely.
       this.applyPayload(payload);
       this.cards = Array.isArray(payload.cards) ? payload.cards : [];
+      // The experiment set is identical across every jitter card, so any
+      // one card's meta carries the shared legend data - falls back to []
+      // naturally when color-by-experiment is off (no card will have it).
+      const cardWithLegend = this.cards.find(
+        (card) => card.meta && Array.isArray(card.meta.experiment_legend) && card.meta.experiment_legend.length > 0
+      );
+      this.experimentLegend = cardWithLegend ? cardWithLegend.meta.experiment_legend : [];
       if (!this.cards.length) {
         // Let users know the API returned an empty report.
         this.setError("No plots available in the report payload.");

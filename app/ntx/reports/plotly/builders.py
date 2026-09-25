@@ -21,6 +21,8 @@ class PlotlyBuildContext:
     y_axis: str | None = None
     selected_wells: list[str] | None = None
     selected_wells_mode: Literal["mean", "individual"] | None = None
+    activity_comparison_mode: Literal["bar", "jitter"] = "bar"
+    color_by_experiment: bool = False
 
 
 class ParamSelectionMode(str, Enum):
@@ -42,7 +44,12 @@ def _build_activity_comparison(
     result: AnalysisPipelineResult, ctx: PlotlyBuildContext
 ) -> list[PlotlyCard]:
     # Use the existing activity comparison builder.
-    return build_activity_comparison_cards(result, params=ctx.params or [])
+    return build_activity_comparison_cards(
+        result,
+        params=ctx.params or [],
+        activity_comparison_mode=ctx.activity_comparison_mode,
+        color_by_experiment=bool(getattr(ctx, "color_by_experiment", False)),
+    )
 
 
 def _build_heatmap(result: AnalysisPipelineResult, ctx: PlotlyBuildContext) -> list[PlotlyCard]:
