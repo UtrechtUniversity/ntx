@@ -3,6 +3,6 @@
 psycopg[binary]
 django-stubs
 ruff
-pyright
+ty
 pytest
 pytest-django

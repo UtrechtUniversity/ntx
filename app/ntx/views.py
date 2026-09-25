@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import Protocol, cast
+
 from django.db.models import Count, Prefetch
-from django.http import JsonResponse
+from django.http import HttpRequest, HttpResponse, HttpResponseBase, JsonResponse
 from django.shortcuts import get_object_or_404, render
-from django.views.decorators.http import require_GET
+from django.views.decorators.http import require_GET as django_require_GET
 
 from .analysis.pipeline import AnalysisPipelineError
 from .models import Condition, Experiment, OutlierMethod, Project
@@ -14,12 +17,21 @@ from .reports.service import (
 )
 
 
-def projects_overview(request):
+class _ViewDecorator(Protocol):
+    def __call__[F: Callable[..., HttpResponseBase]](self, view: F, /) -> F: ...
+
+
+# ty 0.0.83 does not preserve the generic callable variable in django-stubs.
+# Describe the same decorator with a generic method to preserve view signatures.
+require_GET = cast(_ViewDecorator, django_require_GET)
+
+
+def projects_overview(request: HttpRequest) -> HttpResponse:
     projects = Project.objects.annotate(experiments_count=Count("experiments", distinct=True))
     return render(request, "ntx/projects_list.html", {"projects": projects})
 
 
-def project_detail(request, slug: str):
+def project_detail(request: HttpRequest, slug: str) -> HttpResponse:
     project = get_object_or_404(Project, slug=slug)
     experiments = project.experiments.all()
     return render(
@@ -29,7 +41,7 @@ def project_detail(request, slug: str):
     )
 
 
-def project_report(request, slug: str):
+def project_report(request: HttpRequest, slug: str) -> HttpResponse:
     project = get_object_or_404(Project, slug=slug)
     plot_options = build_plot_options()
     experiments = [
@@ -48,7 +60,7 @@ def project_report(request, slug: str):
 
 
 @require_GET
-def project_report_api(request, slug: str):
+def project_report_api(request: HttpRequest, slug: str) -> JsonResponse:
     project = get_object_or_404(Project, slug=slug)
 
     params_input = request.GET.getlist("params")
@@ -108,7 +120,7 @@ def project_report_api(request, slug: str):
 
 
 @require_GET
-def project_report_metadata_api(request, slug: str):
+def project_report_metadata_api(request: HttpRequest, slug: str) -> JsonResponse:
     project = get_object_or_404(Project, slug=slug)
     experiment_param = request.GET.get("experiment")
 
@@ -125,7 +137,7 @@ def project_report_metadata_api(request, slug: str):
     return JsonResponse(payload)
 
 
-def experiments_list(request):
+def experiments_list(request: HttpRequest) -> HttpResponse:
     experiments = (
         Experiment.objects.select_related("project")
         .prefetch_related(
@@ -157,7 +169,7 @@ def experiments_list(request):
     return render(request, "ntx/experiments_list.html", {"experiment_rows": experiment_rows})
 
 
-def experiment_detail(request, pk: int):
+def experiment_detail(request: HttpRequest, pk: int) -> HttpResponse:
     experiment = get_object_or_404(
         Experiment.objects.select_related("project").prefetch_related(
             Prefetch(

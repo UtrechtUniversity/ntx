@@ -720,9 +720,7 @@ def _compute_knockout_stats(
 
 
 def _should_prefix_sex(project: Project, new_sex: str) -> bool:
-    sexes = set(
-        project.experiments.exclude(sex=Sex.UNKNOWN).values_list("sex", flat=True)  # type: ignore[attr-defined]
-    )
+    sexes = set(project.experiments.exclude(sex=Sex.UNKNOWN).values_list("sex", flat=True))
     if new_sex and new_sex != Sex.UNKNOWN:
         sexes.add(new_sex)
     return len(sexes) > 1
@@ -752,7 +750,7 @@ def _format_condition_name(cond_layout, unit: ConcentrationUnit | None) -> str:
 
 
 def _sort_wells(wells: Iterable[str]) -> list[str]:
-    def _well_key(well: str):
+    def _well_key(well: str) -> tuple[str, int]:
         row = well[0].upper()
         try:
             col = int(well[1:])
