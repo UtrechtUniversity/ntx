@@ -437,6 +437,12 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
         if should_parse:
             obj.parse_files()
 
+    def save_related(self, request, form, formsets, change) -> None:
+        super().save_related(request, form, formsets, change)
+
+        if change:
+            form.instance.revalidate_after_edit()
+
 
 @admin.register(ExperimentFile)
 class ExperimentFileAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
