@@ -370,7 +370,7 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
         failed = 0
 
         for ingest in queryset:
-            if ingest.status != ExperimentIngest.Status.PARSED:
+            if not ingest.can_promote(replace_existing=replace_existing):
                 skipped += 1
                 continue
 
