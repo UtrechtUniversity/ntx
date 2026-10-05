@@ -546,7 +546,7 @@ class ExperimentIngest(TimeStampedModel):
         return f"ExperimentIngest #{self.pk or 'new'} ({self.status})"
 
     def parse_files(self) -> None:
-        
+
         try:
             if not (self.layout_file and self.baseline_csv and self.exposure_csv):
                 raise ValidationError({"layout_file": "All three files must be uploaded."})
@@ -754,22 +754,15 @@ class ExperimentIngest(TimeStampedModel):
         self.status = self.Status.ERROR
         self.error_stage = self.ErrorStage.PROMOTE
         self.error_message = message
-        self.save(
-            update_fields=["status", "error_stage", "error_message", "updated_at"]
-        )
+        self.save(update_fields=["status", "error_stage", "error_message", "updated_at"])
 
     def revalidate_after_edit(self) -> None:
-        if (
-            self.status != self.Status.ERROR
-            or self.error_stage != self.ErrorStage.PROMOTE
-        ):
+        if self.status != self.Status.ERROR or self.error_stage != self.ErrorStage.PROMOTE:
             return
 
         try:
             if not self.project_id:
-                raise ValidationError(
-                    {"project": "Project is required before promotion."}
-                )
+                raise ValidationError({"project": "Project is required before promotion."})
 
             self._to_ingestion_inputs()
         except ValidationError as exc:
@@ -779,9 +772,7 @@ class ExperimentIngest(TimeStampedModel):
         self.status = self.Status.PARSED
         self.error_stage = ""
         self.error_message = ""
-        self.save(
-            update_fields=["status", "error_stage", "error_message", "updated_at"]
-        )
+        self.save(update_fields=["status", "error_stage", "error_message", "updated_at"])
 
     def execute_ingest(self, *, replace_existing: bool = False) -> Experiment:
         """
