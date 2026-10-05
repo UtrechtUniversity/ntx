@@ -95,6 +95,7 @@ def test_execute_ingest_requires_defined_exposure_type(
 
     ingest.refresh_from_db()
     assert ingest.status == ExperimentIngest.Status.ERROR
+    assert ingest.error_stage == ExperimentIngest.ErrorStage.PROMOTE
     assert "Exposure type must be set" in str(excinfo.value)
     assert "Exposure type must be set" in ingest.error_message
     assert not Experiment.objects.filter(code=ingest.code).exists()
@@ -184,6 +185,7 @@ def test_execute_ingest_marks_staged_validation_failure_as_error(
 
     ingest.refresh_from_db()
     assert ingest.status == ExperimentIngest.Status.ERROR
+    assert ingest.error_stage == ExperimentIngest.ErrorStage.PROMOTE
     assert "Duplicate well 'A1'" in ingest.error_message
     assert not Experiment.objects.filter(code=ingest.code).exists()
 
@@ -229,4 +231,44 @@ def test_admin_promotion_reports_attempted_failures_separately(
 
     failed_ingest.refresh_from_db()
     assert failed_ingest.status == ExperimentIngest.Status.ERROR
+    assert failed_ingest.error_stage == ExperimentIngest.ErrorStage.PROMOTE
     assert captured == [("0 experiments created, 1 failed, 1 skipped.", messages.WARNING)]
+
+
+def test_corrected_promotion_error_becomes_parsed(
+    stored_data_dir: Path,
+    media_root: Path,
+):
+    ingest = _create_invalid_parsed_ingest(
+        stored_data_dir=stored_data_dir,
+        media_root=media_root,
+        exposure_type=ExposureType.UNDEFINED,
+    )
+
+    # Fix the duplicate wells created by the helper so only exposure is invalid.
+    ingest.ingest_groups.filter(is_control=False).update(wells="A2")
+
+    with pytest.raises(ValidationError):
+        ingest.execute_ingest()
+
+    ingest.refresh_from_db()
+    assert ingest.status == ExperimentIngest.Status.ERROR
+    assert ingest.error_stage == ExperimentIngest.ErrorStage.PROMOTE
+
+    # Revalidating without correcting the exposure must retain the error.
+    ingest.revalidate_after_edit()
+
+    ingest.refresh_from_db()
+    assert ingest.status == ExperimentIngest.Status.ERROR
+    assert ingest.error_stage == ExperimentIngest.ErrorStage.PROMOTE
+    assert "Exposure type must be set" in ingest.error_message
+
+    # Correct the exposure and revalidate, as the admin does after saving.
+    ingest.exposure_type = ExposureType.ACUTE
+    ingest.save(update_fields=["exposure_type", "updated_at"])
+    ingest.revalidate_after_edit()
+
+    ingest.refresh_from_db()
+    assert ingest.status == ExperimentIngest.Status.PARSED
+    assert ingest.error_stage == ""
+    assert ingest.error_message == ""
