@@ -12,7 +12,6 @@ from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import UploadedFile
 from django.db import models
 from django.db.models import Count
-from django.forms import formsets
 from django.forms.models import model_to_dict
 from django.http import HttpResponse
 from django.template.loader import render_to_string
