@@ -95,6 +95,7 @@ def test_execute_ingest_requires_defined_exposure_type(
 
     ingest.refresh_from_db()
     assert ingest.status == ExperimentIngest.Status.PARSED
+
     assert "Exposure type must be set" in str(excinfo.value)
     assert "Exposure type must be set" in ingest.error_message
     assert not Experiment.objects.filter(code=ingest.code).exists()
