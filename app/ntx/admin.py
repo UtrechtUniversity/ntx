@@ -358,7 +358,7 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
         failed = 0
 
         for ingest in queryset:
-            if ingest.status != ExperimentIngest.Status.PARSED:
+            if not ingest.can_promote(replace_existing=replace_existing):
                 skipped += 1
                 continue
 
@@ -440,8 +440,37 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
     def save_related(self, request, form, formsets, change) -> None:
         super().save_related(request, form, formsets, change)
 
-        if change:
-            form.instance.revalidate_after_edit()
+        if not change:
+            return
+
+        ingest = form.instance
+        metadata_fields = {
+            "project",
+            "code",
+            "sex",
+            "div",
+            "chemical",
+            "cell_line",
+            "experimenter",
+            "date",
+            "plate_number",
+            "exposure_type",
+            "layout_date",
+            "layout_wells",
+        }
+
+        metadata_changed = bool(metadata_fields.intersection(form.changed_data))
+        groups_changed = any(
+            formset.has_changed() for formset in formsets if formset.model is ExperimentIngestGroup
+        )
+
+        if ingest.status == ExperimentIngest.Status.INGESTED and (
+            metadata_changed or groups_changed
+        ):
+            ingest.status = ExperimentIngest.Status.EDITED
+            ingest.save(update_fields=["status", "updated_at"])
+
+        ingest.revalidate_after_edit()
 
 
 @admin.register(ExperimentFile)

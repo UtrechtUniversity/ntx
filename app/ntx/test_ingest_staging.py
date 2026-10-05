@@ -9,6 +9,7 @@ import pytest
 from django.contrib import messages
 from django.contrib.admin.sites import AdminSite
 from django.core.exceptions import ValidationError
+from django.forms import modelform_factory
 from django.http import HttpRequest
 from django.test import RequestFactory
 
@@ -16,7 +17,14 @@ from .admin import ExperimentIngestAdmin, ExperimentIngestGroupInlineForm
 from .exposure_types import ExposureType
 from .ingest.discovery import discover_experiment_files
 from .ingest.layout import ConditionLayout, ExperimentLayout
-from .models import ConcentrationUnit, Experiment, ExperimentIngest, ExperimentIngestGroup, Project
+from .models import (
+    ConcentrationUnit,
+    Experiment,
+    ExperimentIngest,
+    ExperimentIngestGroup,
+    Project,
+    Sex,
+)
 
 pytestmark = pytest.mark.django_db
 
@@ -272,3 +280,111 @@ def test_corrected_promotion_error_becomes_parsed(
     assert ingest.status == ExperimentIngest.Status.PARSED
     assert ingest.error_stage == ""
     assert ingest.error_message == ""
+
+
+@pytest.mark.parametrize(
+    ("selected_sex", "expected_status"),
+    [
+        (Sex.MALE, ExperimentIngest.Status.INGESTED),
+        (Sex.MIXED, ExperimentIngest.Status.EDITED),
+    ],
+)
+def test_admin_save_marks_only_changed_metadata_as_edited(
+    selected_sex,
+    expected_status,
+):
+    project = Project.objects.get(slug="default-project")
+    ingest = _create_minimal_ingest(project)
+    ingest.status = ExperimentIngest.Status.INGESTED
+    ingest.sex = Sex.MALE
+    ingest.save()
+
+    form_class = modelform_factory(ExperimentIngest, fields=["sex"])
+    form = form_class(data={"sex": selected_sex}, instance=ingest)
+    assert form.is_valid(), form.errors
+
+    request = RequestFactory().post("/admin/ntx/experimentingest/")
+    model_admin = ExperimentIngestAdmin(ExperimentIngest, AdminSite())
+
+    obj = form.save(commit=False)
+    model_admin.save_model(request, obj, form, change=True)
+    model_admin.save_related(request, form, [], change=True)
+
+    ingest.refresh_from_db()
+    assert ingest.sex == selected_sex
+    assert ingest.status == expected_status
+
+
+@pytest.mark.parametrize("corrected_sex", [Sex.FEMALE, Sex.MIXED])
+def test_admin_replacement_uses_corrected_sex(
+    stored_data_dir: Path,
+    media_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    corrected_sex,
+):
+    folder = discover_experiment_files(stored_data_dir)
+    project = Project.objects.get(slug="default-project")
+
+    ingest = ExperimentIngest.objects.create(
+        project=project,
+        layout_file=_stored_name(folder.layout_file, media_root),
+        baseline_csv=_stored_name(folder.baseline_csv, media_root),
+        exposure_csv=_stored_name(folder.exposure_csv, media_root),
+    )
+    ingest.parse_files()
+    ingest.sex = Sex.MALE
+    ingest.exposure_type = ExposureType.ACUTE
+    ingest.save()
+
+    original = ingest.execute_ingest()
+    assert original.sex == Sex.MALE
+
+    form_class = modelform_factory(ExperimentIngest, fields=["sex"])
+    form = form_class(data={"sex": corrected_sex}, instance=ingest)
+    assert form.is_valid(), form.errors
+
+    request = RequestFactory().post("/admin/ntx/experimentingest/")
+    model_admin = ExperimentIngestAdmin(ExperimentIngest, AdminSite())
+
+    obj = form.save(commit=False)
+    model_admin.save_model(request, obj, form, change=True)
+    model_admin.save_related(request, form, [], change=True)
+
+    ingest.refresh_from_db()
+    assert ingest.status == ExperimentIngest.Status.EDITED
+
+    # Editing the ingest must not immediately change the experiment.
+    original.refresh_from_db()
+    assert original.sex == Sex.MALE
+
+    captured = []
+
+    def capture_message(request, message, **kwargs):
+        captured.append(message)
+
+    monkeypatch.setattr(model_admin, "message_user", capture_message)
+
+    # Ordinary promotion must skip edited records.
+    model_admin.promote_to_experiment(
+        request,
+        ExperimentIngest.objects.filter(pk=ingest.pk),
+    )
+    assert captured[-1] == "0 experiments created, 0 failed, 1 skipped."
+
+    with pytest.raises(ValidationError, match="replacement"):
+        ingest.execute_ingest()
+
+    # Explicit replacement must use the corrected sex.
+    model_admin.promote_to_experiment_replacing_existing(
+        request,
+        ExperimentIngest.objects.filter(pk=ingest.pk),
+    )
+    assert captured[-1] == "1 experiments created, 0 failed, 0 skipped."
+
+    ingest.refresh_from_db()
+    replacement = Experiment.objects.get(code=ingest.code)
+
+    assert ingest.status == ExperimentIngest.Status.INGESTED
+    assert replacement.sex == corrected_sex
+    assert replacement.pk != original.pk
+    assert not Experiment.objects.filter(pk=original.pk).exists()
