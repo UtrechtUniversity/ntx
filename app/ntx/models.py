@@ -477,7 +477,12 @@ class ExperimentIngest(TimeStampedModel):
         PENDING = "PENDING", "Pending"
         PARSED = "PARSED", "Parsed"
         INGESTED = "INGESTED", "Ingested"
+        EDITED = "EDITED", "Edited"
         ERROR = "ERROR", "Error"
+
+    class ErrorStage(models.TextChoices):
+        PARSE = "PARSE", "Parsing"
+        PROMOTE = "PROMOTE", "Promotion"
 
     class SubmissionMethod(models.TextChoices):
         UPLOAD = "UPLOAD", "Upload"
@@ -495,6 +500,14 @@ class ExperimentIngest(TimeStampedModel):
         max_length=16, choices=SubmissionMethod.choices, default=SubmissionMethod.UPLOAD
     )
     error_message = models.TextField(blank=True, default="")
+
+    error_stage = models.CharField(
+        max_length=16,
+        choices=ErrorStage.choices,
+        blank=True,
+        default="",
+        editable=False,
+    )
 
     layout_file = models.FileField(upload_to="ingest/layouts/", max_length=500)
     baseline_csv = models.FileField(upload_to="ingest/baselines/", max_length=500)
@@ -534,12 +547,14 @@ class ExperimentIngest(TimeStampedModel):
         return f"ExperimentIngest #{self.pk or 'new'} ({self.status})"
 
     def parse_files(self) -> None:
-        if not (self.layout_file and self.baseline_csv and self.exposure_csv):
-            raise ValidationError({"layout_file": "All three files must be uploaded."})
 
         try:
+            if not (self.layout_file and self.baseline_csv and self.exposure_csv):
+                raise ValidationError({"layout_file": "All three files must be uploaded."})
+
             with transaction.atomic():
                 layout = self.populate_from_files()
+                self.error_stage = ""
                 self.status = self.Status.PARSED
                 self.error_message = ""
 
@@ -558,6 +573,7 @@ class ExperimentIngest(TimeStampedModel):
                         "exposure_type",
                         "layout_date",
                         "layout_wells",
+                        "error_stage",
                         "updated_at",
                     ]
                 )
@@ -565,8 +581,9 @@ class ExperimentIngest(TimeStampedModel):
 
         except Exception as e:
             self.status = self.Status.ERROR
+            self.error_stage = self.ErrorStage.PARSE
             self.error_message = str(e)
-            self.save(update_fields=["status", "error_message", "updated_at"])
+            self.save(update_fields=["status", "error_stage", "error_message", "updated_at"])
             raise
 
     def populate_from_files(self) -> ExperimentLayout:
@@ -734,17 +751,45 @@ class ExperimentIngest(TimeStampedModel):
         layout = self._to_experiment_layout()
         return self._to_experiment_folder(metadata), layout
 
-    def _mark_error(self, message: str) -> None:
+    def _record_promotion_error(self, message: str) -> None:
         self.status = self.Status.ERROR
+        self.error_stage = self.ErrorStage.PROMOTE
         self.error_message = message
-        self.save(update_fields=["status", "error_message", "updated_at"])
+        self.save(update_fields=["status", "error_stage", "error_message", "updated_at"])
+
+    def revalidate_after_edit(self) -> None:
+        if self.status != self.Status.ERROR or self.error_stage != self.ErrorStage.PROMOTE:
+            return
+
+        try:
+            if not self.project_id:
+                raise ValidationError({"project": "Project is required before promotion."})
+
+            self._to_ingestion_inputs()
+        except ValidationError as exc:
+            self._record_promotion_error(_format_validation_error(exc))
+            return
+
+        self.status = self.Status.PARSED
+        self.error_stage = ""
+        self.error_message = ""
+        self.save(update_fields=["status", "error_stage", "error_message", "updated_at"])
+
+    def can_promote(self, *, replace_existing: bool = False) -> bool:
+        return self.status == self.Status.PARSED or (
+            replace_existing and self.status == self.Status.EDITED
+        )
 
     def execute_ingest(self, *, replace_existing: bool = False) -> Experiment:
         """
-        Promote this parsed ingest to an Experiment.
+        Promote a parsed ingest or replace an existing experiment from an edited ingest.
         """
-        if self.status != self.Status.PARSED:
-            raise ValidationError("Only parsed ingests can be promoted to Experiment.")
+
+        if not self.can_promote(replace_existing=replace_existing):
+            raise ValidationError(
+                "Only parsed ingests can be promoted. "
+                "Edited ingests require promotion with replacement."
+            )
 
         from ntx.ingest.service import IngestionError, create_experiment_from_files
 
@@ -761,19 +806,20 @@ class ExperimentIngest(TimeStampedModel):
                 default_unit_symbol=None,
             )
         except ValidationError as exc:
-            self._mark_error(_format_validation_error(exc))
+            self._record_promotion_error(_format_validation_error(exc))
             raise
         except IngestionError as exc:
-            self._mark_error(str(exc))
+            self._record_promotion_error(str(exc))
             raise ValidationError(str(exc)) from exc
 
         except Exception as e:
-            self._mark_error(str(e))
+            self._record_promotion_error(str(e))
             raise
 
         self.status = self.Status.INGESTED
+        self.error_stage = ""
         self.error_message = ""
-        self.save(update_fields=["status", "error_message", "updated_at"])
+        self.save(update_fields=["status", "error_stage", "error_message", "updated_at"])
         return experiment
 
 
