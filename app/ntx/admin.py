@@ -15,8 +15,8 @@ from django.db.models import Count
 from django.forms.models import model_to_dict
 from django.http import HttpResponse
 from django.template.loader import render_to_string
-from django.utils.safestring import SafeString, mark_safe
 from django.utils.html import format_html
+from django.utils.safestring import SafeString, mark_safe
 
 from .metrics_metadata import METRIC_SECTIONS
 from .metrics_schema import MetricsPayload
