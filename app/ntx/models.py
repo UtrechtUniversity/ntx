@@ -496,7 +496,6 @@ class ExperimentIngest(TimeStampedModel):
     )
     error_message = models.TextField(blank=True, default="")
 
-
     layout_file = models.FileField(upload_to="ingest/layouts/", max_length=500)
     baseline_csv = models.FileField(upload_to="ingest/baselines/", max_length=500)
     exposure_csv = models.FileField(upload_to="ingest/exposures/", max_length=500)

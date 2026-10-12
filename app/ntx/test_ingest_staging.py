@@ -279,9 +279,7 @@ def test_parse_failure_records_error_and_blocks_promotion(
     def fail_parsing(self):
         raise ValidationError("Invalid layout contents")
 
-    monkeypatch.setattr(
-        ExperimentIngest, "populate_from_files", fail_parsing
-    )
+    monkeypatch.setattr(ExperimentIngest, "populate_from_files", fail_parsing)
 
     with pytest.raises(ValidationError, match="Invalid layout contents"):
         ingest.parse_files()
