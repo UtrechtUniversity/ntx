@@ -479,10 +479,6 @@ class ExperimentIngest(TimeStampedModel):
         INGESTED = "INGESTED", "Ingested"
         ERROR = "ERROR", "Error"
 
-    class ErrorStage(models.TextChoices):
-        PARSE = "PARSE", "Parsing"
-        PROMOTE = "PROMOTE", "Promotion"
-
     class SubmissionMethod(models.TextChoices):
         UPLOAD = "UPLOAD", "Upload"
         DISCOVERED = "DISCOVERED", "Discovered"
@@ -500,13 +496,6 @@ class ExperimentIngest(TimeStampedModel):
     )
     error_message = models.TextField(blank=True, default="")
 
-    error_stage = models.CharField(
-        max_length=16,
-        choices=ErrorStage.choices,
-        blank=True,
-        default="",
-        editable=False,
-    )
 
     layout_file = models.FileField(upload_to="ingest/layouts/", max_length=500)
     baseline_csv = models.FileField(upload_to="ingest/baselines/", max_length=500)
@@ -553,7 +542,6 @@ class ExperimentIngest(TimeStampedModel):
 
             with transaction.atomic():
                 layout = self.populate_from_files()
-                self.error_stage = ""
                 self.status = self.Status.PARSED
                 self.error_message = ""
 
@@ -572,7 +560,6 @@ class ExperimentIngest(TimeStampedModel):
                         "exposure_type",
                         "layout_date",
                         "layout_wells",
-                        "error_stage",
                         "updated_at",
                     ]
                 )
@@ -580,9 +567,8 @@ class ExperimentIngest(TimeStampedModel):
 
         except Exception as e:
             self.status = self.Status.ERROR
-            self.error_stage = self.ErrorStage.PARSE
             self.error_message = str(e)
-            self.save(update_fields=["status", "error_stage", "error_message", "updated_at"])
+            self.save(update_fields=["status", "error_message", "updated_at"])
             raise
 
     def populate_from_files(self) -> ExperimentLayout:
@@ -751,28 +737,8 @@ class ExperimentIngest(TimeStampedModel):
         return self._to_experiment_folder(metadata), layout
 
     def _record_promotion_error(self, message: str) -> None:
-        self.status = self.Status.ERROR
-        self.error_stage = self.ErrorStage.PROMOTE
         self.error_message = message
-        self.save(update_fields=["status", "error_stage", "error_message", "updated_at"])
-
-    def revalidate_after_edit(self) -> None:
-        if self.status != self.Status.ERROR or self.error_stage != self.ErrorStage.PROMOTE:
-            return
-
-        try:
-            if not self.project_id:
-                raise ValidationError({"project": "Project is required before promotion."})
-
-            self._to_ingestion_inputs()
-        except ValidationError as exc:
-            self._record_promotion_error(_format_validation_error(exc))
-            return
-
-        self.status = self.Status.PARSED
-        self.error_stage = ""
-        self.error_message = ""
-        self.save(update_fields=["status", "error_stage", "error_message", "updated_at"])
+        self.save(update_fields=["error_message", "updated_at"])
 
     def execute_ingest(self, *, replace_existing: bool = False) -> Experiment:
         """
@@ -807,9 +773,8 @@ class ExperimentIngest(TimeStampedModel):
             raise
 
         self.status = self.Status.INGESTED
-        self.error_stage = ""
         self.error_message = ""
-        self.save(update_fields=["status", "error_stage", "error_message", "updated_at"])
+        self.save(update_fields=["status", "error_message", "updated_at"])
         return experiment
 
 
