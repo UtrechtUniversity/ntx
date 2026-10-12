@@ -469,9 +469,7 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
 
     def save_related(self, request, form, formsets, change) -> None:
         details_changed = form.has_changed() or any(
-            inline_form.has_changed()
-            for formset in formsets
-            for inline_form in formset.forms
+            inline_form.has_changed() for formset in formsets for inline_form in formset.forms
         )
 
         super().save_related(request, form, formsets, change)
@@ -485,6 +483,7 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
         ):
             ingest.error_message = ""
             ingest.save(update_fields=["error_message", "updated_at"])
+
 
 @admin.register(ExperimentFile)
 class ExperimentFileAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
