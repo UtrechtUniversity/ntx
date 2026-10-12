@@ -479,10 +479,6 @@ class ExperimentIngest(TimeStampedModel):
         INGESTED = "INGESTED", "Ingested"
         ERROR = "ERROR", "Error"
 
-    class ErrorStage(models.TextChoices):
-        PARSE = "PARSE", "Parsing"
-        PROMOTE = "PROMOTE", "Promotion"
-
     class SubmissionMethod(models.TextChoices):
         UPLOAD = "UPLOAD", "Upload"
         DISCOVERED = "DISCOVERED", "Discovered"
@@ -500,13 +496,6 @@ class ExperimentIngest(TimeStampedModel):
     )
     error_message = models.TextField(blank=True, default="")
 
-    error_stage = models.CharField(
-        max_length=16,
-        choices=ErrorStage.choices,
-        blank=True,
-        default="",
-        editable=False,
-    )
 
     layout_file = models.FileField(upload_to="ingest/layouts/", max_length=500)
     baseline_csv = models.FileField(upload_to="ingest/baselines/", max_length=500)
@@ -553,7 +542,6 @@ class ExperimentIngest(TimeStampedModel):
 
             with transaction.atomic():
                 layout = self.populate_from_files()
-                self.error_stage = ""
                 self.status = self.Status.PARSED
                 self.error_message = ""
 
@@ -572,7 +560,6 @@ class ExperimentIngest(TimeStampedModel):
                         "exposure_type",
                         "layout_date",
                         "layout_wells",
-                        "error_stage",
                         "updated_at",
                     ]
                 )
@@ -580,9 +567,8 @@ class ExperimentIngest(TimeStampedModel):
 
         except Exception as e:
             self.status = self.Status.ERROR
-            self.error_stage = self.ErrorStage.PARSE
             self.error_message = str(e)
-            self.save(update_fields=["status", "error_stage", "error_message", "updated_at"])
+            self.save(update_fields=["status", "error_message", "updated_at"])
             raise
 
     def populate_from_files(self) -> ExperimentLayout:
@@ -788,9 +774,8 @@ class ExperimentIngest(TimeStampedModel):
             raise
 
         self.status = self.Status.INGESTED
-        self.error_stage = ""
         self.error_message = ""
-        self.save(update_fields=["status", "error_stage", "error_message", "updated_at"])
+        self.save(update_fields=["status", "error_message", "updated_at"])
         return experiment
 
 
