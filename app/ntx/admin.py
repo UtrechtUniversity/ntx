@@ -334,7 +334,6 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
     def has_error(self, obj: ExperimentIngest) -> str | None:
         return "Error" if obj.error_message else None
 
-
     @admin.action(description="Parse/reparse selected uploads")
     def parse_selected_uploads(self, request, queryset) -> None:
         parsed = 0
