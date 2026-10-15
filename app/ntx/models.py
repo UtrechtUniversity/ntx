@@ -534,10 +534,11 @@ class ExperimentIngest(TimeStampedModel):
         return f"ExperimentIngest #{self.pk or 'new'} ({self.status})"
 
     def parse_files(self) -> None:
-        if not (self.layout_file and self.baseline_csv and self.exposure_csv):
-            raise ValidationError({"layout_file": "All three files must be uploaded."})
 
         try:
+            if not (self.layout_file and self.baseline_csv and self.exposure_csv):
+                raise ValidationError({"layout_file": "All three files must be uploaded."})
+
             with transaction.atomic():
                 layout = self.populate_from_files()
                 self.status = self.Status.PARSED
@@ -734,10 +735,9 @@ class ExperimentIngest(TimeStampedModel):
         layout = self._to_experiment_layout()
         return self._to_experiment_folder(metadata), layout
 
-    def _mark_error(self, message: str) -> None:
-        self.status = self.Status.ERROR
+    def _record_promotion_error(self, message: str) -> None:
         self.error_message = message
-        self.save(update_fields=["status", "error_message", "updated_at"])
+        self.save(update_fields=["error_message", "updated_at"])
 
     def execute_ingest(self, *, replace_existing: bool = False) -> Experiment:
         """
@@ -761,14 +761,14 @@ class ExperimentIngest(TimeStampedModel):
                 default_unit_symbol=None,
             )
         except ValidationError as exc:
-            self._mark_error(_format_validation_error(exc))
+            self._record_promotion_error(_format_validation_error(exc))
             raise
         except IngestionError as exc:
-            self._mark_error(str(exc))
+            self._record_promotion_error(str(exc))
             raise ValidationError(str(exc)) from exc
 
         except Exception as e:
-            self._mark_error(str(e))
+            self._record_promotion_error(str(e))
             raise
 
         self.status = self.Status.INGESTED

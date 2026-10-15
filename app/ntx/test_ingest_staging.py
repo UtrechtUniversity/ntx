@@ -94,7 +94,7 @@ def test_execute_ingest_requires_defined_exposure_type(
         ingest.execute_ingest()
 
     ingest.refresh_from_db()
-    assert ingest.status == ExperimentIngest.Status.ERROR
+    assert ingest.status == ExperimentIngest.Status.PARSED
     assert "Exposure type must be set" in str(excinfo.value)
     assert "Exposure type must be set" in ingest.error_message
     assert not Experiment.objects.filter(code=ingest.code).exists()
@@ -170,7 +170,7 @@ def test_ingest_group_inline_form_formats_concentration_initial_value():
     assert form.initial["concentration"] == "100"
 
 
-def test_execute_ingest_marks_staged_validation_failure_as_error(
+def test_execute_ingest_keeps_parsed_on_staged_validation_failure(
     stored_data_dir: Path,
     media_root: Path,
 ):
@@ -183,7 +183,7 @@ def test_execute_ingest_marks_staged_validation_failure_as_error(
         ingest.execute_ingest()
 
     ingest.refresh_from_db()
-    assert ingest.status == ExperimentIngest.Status.ERROR
+    assert ingest.status == ExperimentIngest.Status.PARSED
     assert "Duplicate well 'A1'" in ingest.error_message
     assert not Experiment.objects.filter(code=ingest.code).exists()
 
@@ -228,5 +228,65 @@ def test_admin_promotion_reports_attempted_failures_separately(
     )
 
     failed_ingest.refresh_from_db()
-    assert failed_ingest.status == ExperimentIngest.Status.ERROR
+    assert failed_ingest.status == ExperimentIngest.Status.PARSED
     assert captured == [("0 experiments created, 1 failed, 1 skipped.", messages.WARNING)]
+
+
+def test_corrected_promotion_error_can_be_retried(
+    stored_data_dir: Path,
+    media_root: Path,
+):
+    ingest = _create_invalid_parsed_ingest(
+        stored_data_dir=stored_data_dir,
+        media_root=media_root,
+        exposure_type=ExposureType.UNDEFINED,
+    )
+
+    # Fix the duplicate wells created by the helper so only exposure is invalid.
+    ingest.ingest_groups.filter(is_control=False).update(wells="A2")
+
+    with pytest.raises(ValidationError):
+        ingest.execute_ingest()
+
+    ingest.refresh_from_db()
+    assert ingest.status == ExperimentIngest.Status.PARSED
+    assert "Exposure type must be set" in ingest.error_message
+    previous_error = ingest.error_message
+
+    # Saving corrected details preserves the last failed attempt.
+    ingest.exposure_type = ExposureType.ACUTE
+    ingest.save(update_fields=["exposure_type", "updated_at"])
+
+    ingest.refresh_from_db()
+    assert ingest.status == ExperimentIngest.Status.PARSED
+    assert ingest.error_message == previous_error
+
+    # Retry promotion; success clears the previous error.
+    experiment = ingest.execute_ingest()
+
+    ingest.refresh_from_db()
+    assert ingest.status == ExperimentIngest.Status.INGESTED
+    assert ingest.error_message == ""
+    assert Experiment.objects.filter(pk=experiment.pk).exists()
+
+
+def test_parse_failure_records_error_and_blocks_promotion(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    project = Project.objects.get(slug="default-project")
+    ingest = _create_minimal_ingest(project)
+
+    def fail_parsing(self):
+        raise ValidationError("Invalid layout contents")
+
+    monkeypatch.setattr(ExperimentIngest, "populate_from_files", fail_parsing)
+
+    with pytest.raises(ValidationError, match="Invalid layout contents"):
+        ingest.parse_files()
+
+    ingest.refresh_from_db()
+    assert ingest.status == ExperimentIngest.Status.ERROR
+    assert "Invalid layout contents" in ingest.error_message
+
+    with pytest.raises(ValidationError, match="Only parsed ingests"):
+        ingest.execute_ingest()
