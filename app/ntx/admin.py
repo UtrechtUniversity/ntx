@@ -277,13 +277,10 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
         "sex",
         "created_at",
     )
-    
+
     list_filter = ("project", "status", "submission_method", "sex")
     search_fields = ("code", "chemical", "cell_line", "experimenter")
     readonly_fields = ("status", "error_message", "created_at", "updated_at")
-
-    class Media:
-        css = {"all": ("ntx/admin_ingest.css",)}
 
     class Media:
         css = {"all": ("ntx/admin_ingest.css",)}
