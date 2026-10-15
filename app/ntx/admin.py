@@ -15,7 +15,6 @@ from django.db.models import Count
 from django.forms.models import model_to_dict
 from django.http import HttpResponse
 from django.template.loader import render_to_string
-from django.utils.html import format_html
 from django.utils.safestring import SafeString, mark_safe
 
 from .metrics_metadata import METRIC_SECTIONS
@@ -269,11 +268,16 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
     list_display = (
         "id",
 <<<<<<< HEAD
+<<<<<<< HEAD
         "status",
         "has_error",
 =======
         "display_status",
 >>>>>>> 05dddf9 (Remove Error satatus)
+=======
+        "status",
+        "has_error",
+>>>>>>> 1d49b35 (Simplify ingest error display and remove PR-only migrations)
         "submission_method",
         "code",
         "project",
@@ -284,7 +288,10 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
     )
     list_filter = ("project", "status", "submission_method", "sex")
     search_fields = ("code", "chemical", "cell_line", "experimenter")
-    readonly_fields = ("status", "display_error_message", "created_at", "updated_at")
+    readonly_fields = ("status", "error_message", "created_at", "updated_at")
+
+    class Media:
+        css = {"all": ("ntx/admin_ingest.css",)}
 
     class Media:
         css = {"all": ("ntx/admin_ingest.css",)}
@@ -297,7 +304,7 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
     )
 
     change_fieldsets: _FieldsetSpec = (
-        ("Logs", {"fields": ("display_error_message",)}),
+        ("Logs", {"fields": ("error_message",)}),
         ("Status", {"fields": ("status", "submission_method", "created_at", "updated_at")}),
         ("Uploads", {"fields": ("layout_file", "baseline_csv", "exposure_csv")}),
         (
@@ -338,6 +345,10 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
     @admin.display(description="Error", empty_value="")
     def has_error(self, obj: ExperimentIngest) -> str | None:
         return "Error" if obj.error_message else None
+<<<<<<< HEAD
+=======
+
+>>>>>>> 1d49b35 (Simplify ingest error display and remove PR-only migrations)
 
     @admin.action(description="Parse/reparse selected uploads")
     def parse_selected_uploads(self, request, queryset) -> None:
@@ -449,23 +460,6 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
 
         if should_parse:
             obj.parse_files()
-
-    def save_related(self, request, form, formsets, change) -> None:
-        details_changed = form.has_changed() or any(
-            inline_form.has_changed() for formset in formsets for inline_form in formset.forms
-        )
-
-        super().save_related(request, form, formsets, change)
-
-        ingest = form.instance
-        if (
-            change
-            and details_changed
-            and ingest.status == ExperimentIngest.Status.PARSED
-            and ingest.error_message
-        ):
-            ingest.error_message = ""
-            ingest.save(update_fields=["error_message", "updated_at"])
 
 
 @admin.register(ExperimentFile)
