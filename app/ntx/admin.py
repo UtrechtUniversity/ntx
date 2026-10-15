@@ -267,17 +267,8 @@ class ExperimentIngestGroupInline(admin.TabularInline):
 class ExperimentIngestAdmin(admin.ModelAdmin):
     list_display = (
         "id",
-<<<<<<< HEAD
-<<<<<<< HEAD
         "status",
         "has_error",
-=======
-        "display_status",
->>>>>>> 05dddf9 (Remove Error satatus)
-=======
-        "status",
-        "has_error",
->>>>>>> 1d49b35 (Simplify ingest error display and remove PR-only migrations)
         "submission_method",
         "code",
         "project",
@@ -286,6 +277,7 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
         "sex",
         "created_at",
     )
+    
     list_filter = ("project", "status", "submission_method", "sex")
     search_fields = ("code", "chemical", "cell_line", "experimenter")
     readonly_fields = ("status", "error_message", "created_at", "updated_at")
@@ -345,10 +337,6 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
     @admin.display(description="Error", empty_value="")
     def has_error(self, obj: ExperimentIngest) -> str | None:
         return "Error" if obj.error_message else None
-<<<<<<< HEAD
-=======
-
->>>>>>> 1d49b35 (Simplify ingest error display and remove PR-only migrations)
 
     @admin.action(description="Parse/reparse selected uploads")
     def parse_selected_uploads(self, request, queryset) -> None:
