@@ -268,6 +268,7 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
     list_display = (
         "id",
         "status",
+        "has_error",
         "submission_method",
         "code",
         "project",
@@ -279,6 +280,9 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
     list_filter = ("project", "status", "submission_method", "sex")
     search_fields = ("code", "chemical", "cell_line", "experimenter")
     readonly_fields = ("status", "error_message", "created_at", "updated_at")
+
+    class Media:
+        css = {"all": ("ntx/admin_ingest.css",)}
 
     add_fieldsets: _FieldsetSpec = (
         (
@@ -325,6 +329,10 @@ class ExperimentIngestAdmin(admin.ModelAdmin):
         if obj is None:
             return ()
         return (ExperimentIngestGroupInline,)
+
+    @admin.display(description="Error", empty_value="")
+    def has_error(self, obj: ExperimentIngest) -> str | None:
+        return "Error" if obj.error_message else None
 
     @admin.action(description="Parse/reparse selected uploads")
     def parse_selected_uploads(self, request, queryset) -> None:

@@ -12,3 +12,8 @@
 #ingest_groups-group .ntx-ingest-wells-input {
     width: 24ch;
 }
+
+.model-experimentingest .field-error_message .readonly {
+    color: var(--error-fg);
+    font-weight: 600;
+}
