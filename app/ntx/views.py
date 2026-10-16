@@ -81,6 +81,14 @@ def project_report_api(request: HttpRequest, slug: str) -> JsonResponse:
     # Pass raw plot key through the builder registry (validated downstream).
     plot = request.GET.get("plot")
     outlier_method = request.GET.get("outlier_method")
+    activity_comparison_mode = request.GET.get("activity_comparison_mode", "").strip() or None
+    # Optional flag: color points by experiment in activity comparison jitter plots
+    color_by_experiment_param = request.GET.get("color_by_experiment", "").strip() or None
+    color_by_experiment = (
+        True
+        if color_by_experiment_param and color_by_experiment_param.lower() == "true"
+        else False
+    )
 
     # Optional experiment selection (required for scatter plots).
     experiment_param = request.GET.get("experiment")
@@ -112,6 +120,8 @@ def project_report_api(request: HttpRequest, slug: str) -> JsonResponse:
             selected_wells=selected_wells,
             selected_wells_mode=selected_wells_mode,
             outlier_method=outlier_method,
+            activity_comparison_mode=activity_comparison_mode,
+            color_by_experiment=color_by_experiment,
         )
     except (AnalysisPipelineError, ValueError) as exc:
         return JsonResponse({"error": str(exc)}, status=400)

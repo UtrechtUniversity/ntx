@@ -70,3 +70,5 @@ class ProjectReportPayload(BaseModel):
     available_wells: list[PlotlyWellOption] = Field(default_factory=list)
     selected_wells: list[str] | None = None
     selected_wells_mode: str | None = None
+    activity_comparison_mode: str | None = None
+    color_by_experiment: bool | None = None
