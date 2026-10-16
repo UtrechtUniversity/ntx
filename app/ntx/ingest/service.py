@@ -765,10 +765,10 @@ def _map_sex(value: str | None) -> str:
     if not value:
         return Sex.UNKNOWN
     lower = value.lower()
+    if lower.startswith("x") or lower == "mixed":
+        return Sex.MIXED
     if lower.startswith("f"):
         return Sex.FEMALE
     if lower.startswith("m"):
         return Sex.MALE
-    if lower.startswith("x") or lower == "mixed":
-        return Sex.MIXED
     return Sex.UNKNOWN

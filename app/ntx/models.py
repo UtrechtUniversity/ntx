@@ -477,6 +477,7 @@ class ExperimentIngest(TimeStampedModel):
         PENDING = "PENDING", "Pending"
         PARSED = "PARSED", "Parsed"
         INGESTED = "INGESTED", "Ingested"
+        EDITED = "EDITED", "Edited"
         ERROR = "ERROR", "Error"
 
     class SubmissionMethod(models.TextChoices):
@@ -736,15 +737,25 @@ class ExperimentIngest(TimeStampedModel):
         return self._to_experiment_folder(metadata), layout
 
     def _record_promotion_error(self, message: str) -> None:
+
         self.error_message = message
         self.save(update_fields=["error_message", "updated_at"])
 
+    def can_promote(self, *, replace_existing: bool = False) -> bool:
+        return self.status == self.Status.PARSED or (
+            replace_existing and self.status == self.Status.EDITED
+        )
+
     def execute_ingest(self, *, replace_existing: bool = False) -> Experiment:
         """
-        Promote this parsed ingest to an Experiment.
+        Promote a parsed ingest or replace an existing experiment from an edited ingest.
         """
-        if self.status != self.Status.PARSED:
-            raise ValidationError("Only parsed ingests can be promoted to Experiment.")
+
+        if not self.can_promote(replace_existing=replace_existing):
+            raise ValidationError(
+                "Only parsed ingests can be promoted. "
+                "Edited ingests require promotion with replacement."
+            )
 
         from ntx.ingest.service import IngestionError, create_experiment_from_files
 
