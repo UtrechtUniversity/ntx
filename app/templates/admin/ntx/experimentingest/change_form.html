@@ -1,0 +1,31 @@
+{% extends "admin/change_form.html" %}
+
+{% block extrahead %}
+    {{ block.super }}
+    {% if adminform.form.non_field_errors %}
+        <style>
+            .errornote {
+                display: none;
+            }
+
+            .errorlist.nonfield {
+                font-size: 18px;
+                font-weight: 700;
+                line-height: 1.5;
+                color: var(--error-fg);
+                background: var(--body-bg);
+                border: 2px solid var(--error-fg);
+                border-left-width: 6px;
+                border-radius: 6px;
+                padding: 16px 20px;
+                margin: 16px 0;
+                list-style: none;
+            }
+
+            .errorlist.nonfield li {
+                margin: 0;
+                padding: 0;
+            }
+        </style>
+    {% endif %}
+{% endblock %}

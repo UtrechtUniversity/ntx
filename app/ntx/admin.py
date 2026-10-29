@@ -31,6 +31,8 @@ from .models import (
     Project,
 )
 from .utils import normalize_decimals
+from .ingest.discovery import parse_filename_metadata
+
 
 if TYPE_CHECKING:
     from django.contrib.admin.options import _FieldsetSpec
@@ -262,9 +264,61 @@ class ExperimentIngestGroupInline(admin.TabularInline):
     class Media:
         css = {"all": ("ntx/admin_ingest.css",)}
 
+class ExperimentIngestAdminForm(forms.ModelForm):
+    class Meta:
+        model = ExperimentIngest
+        fields = "__all__"
+
+    def clean(self):
+        cleaned_data = super().clean()
+
+        # Check new uploads and replacement CSVs on existing records.
+        if not {"baseline_csv", "exposure_csv"}.intersection(self.files):
+            return cleaned_data
+
+        baseline = cleaned_data.get("baseline_csv")
+        exposure = cleaned_data.get("exposure_csv")
+
+        if not baseline or not exposure:
+            return cleaned_data
+
+        baseline_name = (
+            baseline.name
+            if "baseline_csv" in self.files
+            else self.instance.original_baseline_filename or baseline.name
+        )
+        exposure_name = (
+            exposure.name
+            if "exposure_csv" in self.files
+            else self.instance.original_exposure_filename or exposure.name
+        )
+
+        try:
+            baseline_meta = parse_filename_metadata(baseline_name)
+            exposure_meta = parse_filename_metadata(exposure_name)
+        except ValueError as exc:
+            raise ValidationError(str(exc)) from exc
+
+        if baseline_meta.code != exposure_meta.code:
+            raise ValidationError(
+                "Baseline and exposure files must belong to the same experiment."
+            )
+
+        duplicates = ExperimentIngest.objects.filter(code=baseline_meta.code)
+        if self.instance.pk:
+            duplicates = duplicates.exclude(pk=self.instance.pk)
+
+        if baseline_meta.code and duplicates.exists():
+            raise ValidationError(
+                "These experiment files have already been uploaded."
+            )
+
+        return cleaned_data
+
 
 @admin.register(ExperimentIngest)
 class ExperimentIngestAdmin(admin.ModelAdmin):
+    form = ExperimentIngestAdminForm
     list_display = (
         "id",
         "status",
