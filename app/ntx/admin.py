@@ -17,6 +17,7 @@ from django.http import HttpResponse
 from django.template.loader import render_to_string
 from django.utils.safestring import SafeString, mark_safe
 
+from .ingest.discovery import parse_filename_metadata
 from .metrics_metadata import METRIC_SECTIONS
 from .metrics_schema import MetricsPayload
 from .models import (
@@ -31,8 +32,6 @@ from .models import (
     Project,
 )
 from .utils import normalize_decimals
-from .ingest.discovery import parse_filename_metadata
-
 
 if TYPE_CHECKING:
     from django.contrib.admin.options import _FieldsetSpec
@@ -267,10 +266,10 @@ class ExperimentIngestGroupInline(admin.TabularInline):
 class ExperimentIngestAdminForm(forms.ModelForm):
     class Meta:
         model = ExperimentIngest
-        fields = "__all__"
+        fields = "__all__"  # noqa: DJ007
 
     def clean(self):
-        cleaned_data = super().clean()
+        cleaned_data = super().clean() or {}
 
         # Check new uploads and replacement CSVs on existing records.
         if not {"baseline_csv", "exposure_csv"}.intersection(self.files):
