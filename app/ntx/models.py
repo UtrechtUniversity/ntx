@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, ClassVar, Self
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.base_user import AbstractBaseUser
+from django.contrib.auth.models import AnonymousUser
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
 from django.db.models import Q
@@ -25,6 +27,8 @@ from .metrics_schema import MetricsPayload, MetricsQcPayload
 from .utils import sanitize_numeric_json
 
 User = get_user_model()
+
+type AnyUser = AbstractBaseUser | AnonymousUser
 
 WELL_RE = re.compile(r"^[A-Za-z](\d+)$")
 
@@ -97,9 +101,112 @@ class OutlierMethod(models.TextChoices):
     ZSCORE = "ZSCORE", "Z-Score"
 
 
+class ProjectRole(models.TextChoices):
+    """
+    A collaborator's role in a project. Viewing needs no role: every logged-in user can view
+    all projects.
+    """
+
+    EDITOR = "editor", "Editor"
+    MANAGER = "manager", "Manager"
+
+    @property
+    def rank(self) -> int:
+        return _PROJECT_ROLE_RANKS[self]
+
+    def at_least(self, minimum: ProjectRole) -> bool:
+        return self.rank >= minimum.rank
+
+
+_PROJECT_ROLE_RANKS: dict[str, int] = {
+    ProjectRole.EDITOR: 1,
+    ProjectRole.MANAGER: 2,
+}
+
+
+def roles_at_least(minimum: ProjectRole) -> list[ProjectRole]:
+    return [role for role in ProjectRole if role.at_least(minimum)]
+
+
+# Admins (users with this permission, normally through the Admins group) act as manager in
+# every project, whatever their own role there. Superusers have every permission.
+MANAGE_ALL_PROJECTS = "manage_all_projects"
+ADMIN_PERMISSION = f"ntx.{MANAGE_ALL_PROJECTS}"
+
+
+def is_project_admin(user: AnyUser) -> bool:
+    if not (user.is_authenticated and user.is_active):
+        return False
+    has_perm = getattr(user, "has_perm", None)
+    return bool(has_perm and has_perm(ADMIN_PERMISSION))
+
+
+class ProjectScopedQuerySet[M: models.Model](models.QuerySet[M]):
+    """
+    Filters records by the requesting user's access to the project they belong to.
+
+    The model declares `project_path`: the lookup path from the model to its Project
+    (empty "" for Project itself).
+    """
+
+    def with_role(self, user: AnyUser, minimum: ProjectRole) -> Self:
+        if not (user.is_authenticated and user.is_active):
+            return self.none()
+        if is_project_admin(user):
+            return self.all()
+        project_path: str = getattr(self.model, "project_path")
+        prefix = f"{project_path}__" if project_path else ""
+        return self.filter(
+            **{
+                f"{prefix}memberships__user_id": user.pk,
+                f"{prefix}memberships__role__in": roles_at_least(minimum),
+            }
+        )
+
+    def visible_to(self, user: AnyUser) -> Self:
+        """
+        Every logged-in user can view all projects and their records.
+        """
+        if not (user.is_authenticated and user.is_active):
+            return self.none()
+        return self.all()
+
+    def with_collaborator(self, user: AnyUser) -> Self:
+        """
+        Records in projects where the user is a collaborator (has any role). Admin status is
+        not taken into account: this is for the user's "My projects".
+        """
+        if not (user.is_authenticated and user.is_active):
+            return self.none()
+        project_path: str = getattr(self.model, "project_path")
+        prefix = f"{project_path}__" if project_path else ""
+        # A user has at most one membership per project, so this adds no duplicate rows.
+        return self.filter(**{f"{prefix}memberships__user_id": user.pk})
+
+
+class ProjectScopedManager[M: models.Model](models.Manager[M]):
+    def get_queryset(self) -> ProjectScopedQuerySet[M]:
+        return ProjectScopedQuerySet(self.model, using=self._db)
+
+    def with_role(self, user: AnyUser, minimum: ProjectRole) -> ProjectScopedQuerySet[M]:
+        return self.get_queryset().with_role(user, minimum)
+
+    def visible_to(self, user: AnyUser) -> ProjectScopedQuerySet[M]:
+        return self.get_queryset().visible_to(user)
+
+    def with_collaborator(self, user: AnyUser) -> ProjectScopedQuerySet[M]:
+        return self.get_queryset().with_collaborator(user)
+
+
 class Project(TimeStampedModel):
     if TYPE_CHECKING:
         experiments: models.Manager["Experiment"]
+        experiment_ingests: models.Manager["ExperimentIngest"]
+        memberships: models.Manager["ProjectMembership"]
+        created_by_id: int | None
+
+    project_path: ClassVar[str] = ""
+    objects: ClassVar[ProjectScopedManager[Project]] = ProjectScopedManager()
 
     name = models.CharField(max_length=255)
     slug = models.SlugField(unique=True)
@@ -120,12 +227,16 @@ class Project(TimeStampedModel):
     end_date = models.DateField(null=True, blank=True)
     collaborators = models.ManyToManyField(
         User,
+        through="ProjectMembership",
         related_name="collaborating_projects",
         blank=True,
     )
 
     class Meta(TimeStampedModel.Meta):
         ordering = ["name"]
+        permissions = [
+            (MANAGE_ALL_PROJECTS, "Can manage every project as if they were its manager"),
+        ]
 
     def __str__(self) -> str:
         return self.name
@@ -134,6 +245,34 @@ class Project(TimeStampedModel):
         if not self.slug and self.name:
             self.slug = _generate_unique_slug(self, self.name)
         super().save(*args, **kwargs)
+
+
+class ProjectMembership(TimeStampedModel):
+    """
+    A user's role within a project.
+    """
+
+    if TYPE_CHECKING:
+        project_id: int
+        user_id: int
+
+    project_path: ClassVar[str] = "project"
+    objects: ClassVar[ProjectScopedManager[ProjectMembership]] = ProjectScopedManager()
+
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="memberships")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="project_memberships")
+    role = models.CharField(max_length=16, choices=ProjectRole.choices, default=ProjectRole.EDITOR)
+
+    class Meta(TimeStampedModel.Meta):
+        ordering = ["project_id", "user_id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project", "user"], name="project_membership_unique_user"
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.user} ({ProjectRole(self.role).label}) in {self.project}"
 
 
 class CanonicalMixin(models.Model):
@@ -258,8 +397,21 @@ class Experiment(TimeStampedModel):
         conditions: models.Manager["Condition"]
         files: models.Manager["ExperimentFile"]
         neuronal_metrics_frames: models.Manager["NeuronalMetricsFrame"]
+        project_id: int
+        created_by_id: int | None
+
+    project_path: ClassVar[str] = "project"
+    owner_path: ClassVar[str] = "created_by"
+    objects: ClassVar[ProjectScopedManager[Experiment]] = ProjectScopedManager()
 
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="experiments")
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        related_name="experiments_created",
+        null=True,
+        blank=True,
+    )
     code = models.CharField(max_length=128, blank=False, null=False, unique=True)
     sex = models.CharField(max_length=1, choices=Sex.choices, default=Sex.UNKNOWN)
     researcher = models.CharField(max_length=255, blank=True)
@@ -301,6 +453,9 @@ class ExperimentFile(TimeStampedModel):
         LAYOUT = "LAYOUT", "Plate Layout"
         OTHER = "OTHER", "Other"
 
+    project_path: ClassVar[str] = "experiment__project"
+    objects: ClassVar[ProjectScopedManager[ExperimentFile]] = ProjectScopedManager()
+
     experiment = models.ForeignKey(Experiment, on_delete=models.CASCADE, related_name="files")
     file = models.FileField(max_length=500, upload_to="axion/")
     kind = models.CharField(max_length=32, choices=FileKind.choices, default=FileKind.OTHER)
@@ -316,6 +471,9 @@ class ExperimentFile(TimeStampedModel):
 class Condition(TimeStampedModel):
     if TYPE_CHECKING:
         experiment_id: int
+
+    project_path: ClassVar[str] = "experiment__project"
+    objects: ClassVar[ProjectScopedManager[Condition]] = ProjectScopedManager()
 
     experiment = models.ForeignKey(Experiment, on_delete=models.CASCADE, related_name="conditions")
     name = models.CharField(max_length=255)
@@ -410,6 +568,9 @@ class NeuronalMetricsFrame(TimeStampedModel):
     if TYPE_CHECKING:
         experiment_id: int
 
+    project_path: ClassVar[str] = "experiment__project"
+    objects: ClassVar[ProjectScopedManager[NeuronalMetricsFrame]] = ProjectScopedManager()
+
     experiment = models.ForeignKey(
         Experiment, on_delete=models.CASCADE, related_name="neuronal_metrics_frames"
     )
@@ -471,7 +632,12 @@ class NeuronalMetricsFrame(TimeStampedModel):
 class ExperimentIngest(TimeStampedModel):
     if TYPE_CHECKING:
         project_id: int
+        created_by_id: int | None
         ingest_groups: models.Manager["ExperimentIngestGroup"]
+
+    project_path: ClassVar[str] = "project"
+    owner_path: ClassVar[str] = "created_by"
+    objects: ClassVar[ProjectScopedManager[ExperimentIngest]] = ProjectScopedManager()
 
     class Status(models.TextChoices):
         PENDING = "PENDING", "Pending"
@@ -486,8 +652,15 @@ class ExperimentIngest(TimeStampedModel):
 
     project = models.ForeignKey(
         Project,
-        on_delete=models.PROTECT,
+        on_delete=models.CASCADE,
         related_name="experiment_ingests",
+    )
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        related_name="experiment_ingests_created",
+        null=True,
+        blank=True,
     )
     status = models.CharField(
         max_length=16, choices=Status.choices, default=Status.PENDING, db_index=True
@@ -746,9 +919,14 @@ class ExperimentIngest(TimeStampedModel):
             replace_existing and self.status == self.Status.EDITED
         )
 
-    def execute_ingest(self, *, replace_existing: bool = False) -> Experiment:
+    def execute_ingest(
+        self, *, replace_existing: bool = False, acting_user: AnyUser | None = None
+    ) -> Experiment:
         """
         Promote a parsed ingest or replace an existing experiment from an edited ingest.
+
+        The experiment is credited to the ingest's creator (or else the acting user). Pass
+        `acting_user` when promoting on behalf of a request so their permissions are checked.
         """
 
         if not self.can_promote(replace_existing=replace_existing):
@@ -764,12 +942,17 @@ class ExperimentIngest(TimeStampedModel):
                 raise ValidationError({"project": "Project is required before promotion."})
 
             folder, layout = self._to_ingestion_inputs()
+            creator = self.created_by
+            if creator is None and isinstance(acting_user, AbstractBaseUser):
+                creator = acting_user
             experiment = create_experiment_from_files(
                 folder,
                 project=self.project,
                 layout=layout,
                 replace_existing=replace_existing,
                 default_unit_symbol=None,
+                created_by=creator,
+                acting_user=acting_user,
             )
         except ValidationError as exc:
             self._record_promotion_error(_format_validation_error(exc))
@@ -789,6 +972,10 @@ class ExperimentIngest(TimeStampedModel):
 
 
 class ExperimentIngestGroup(TimeStampedModel):
+    project_path: ClassVar[str] = "ingest__project"
+    owner_path: ClassVar[str] = "ingest__created_by"
+    objects: ClassVar[ProjectScopedManager[ExperimentIngestGroup]] = ProjectScopedManager()
+
     ingest = models.ForeignKey(
         ExperimentIngest,
         on_delete=models.CASCADE,

@@ -10,6 +10,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Iterable
 
+from django.contrib.auth.base_user import AbstractBaseUser
 from django.core.files.storage import default_storage
 from django.db import transaction
 from django.utils import timezone
@@ -19,6 +20,7 @@ from ntx.exposure_types import ExposureType
 from ntx.metrics_metadata import AXION_METRICS_MAP, METRIC_SECTIONS, QC_BASELINE_METRICS
 from ntx.metrics_schema import MetricsPayload
 from ntx.models import (
+    AnyUser,
     Chemical,
     ConcentrationUnit,
     Condition,
@@ -29,6 +31,7 @@ from ntx.models import (
     Project,
     Sex,
 )
+from ntx.permissions import Action, can_in_project, user_can
 from ntx.utils import (
     normalize_decimals,
     sanitize_numeric_json,
@@ -42,6 +45,10 @@ from .parsers import parse_axion_csv, translate_metrics
 
 class IngestionError(Exception):
     """Raised when ingestion cannot continue."""
+
+
+class IngestionPermissionError(IngestionError):
+    """Raised when the acting user may not create or replace the experiment."""
 
 
 @dataclass
@@ -65,9 +72,16 @@ def create_experiment_from_files(
     replace_existing: bool = False,
     allow_missing_mask_metrics: bool = False,
     layout: ExperimentLayout | None = None,
+    created_by: AbstractBaseUser | None = None,
+    acting_user: AnyUser | None = None,
 ) -> Experiment:
     """
     Transactionally create an experiment from Axion export files.
+
+    An existing experiment with the same code is only replaced when it belongs to the same
+    project and `replace_existing` is set. When `acting_user` is given (a request rather than
+    a trusted command), that user must be allowed to add experiments to the project and to
+    change the experiment being replaced.
     """
     metadata = folder.metadata or parse_filename_metadata(folder.baseline_csv)
     if layout is None:
@@ -75,13 +89,29 @@ def create_experiment_from_files(
 
     project = project or _get_default_project()
 
+    if acting_user is not None and not can_in_project(acting_user, Action.ADD, Experiment, project):
+        raise IngestionPermissionError(
+            f"You do not have permission to add experiments to project '{project}'."
+        )
+
     with transaction.atomic():
         existing = Experiment.objects.filter(code=metadata.code).first()
         if existing:
+            if existing.project_id != project.pk:
+                raise IngestionError(
+                    f"Experiment code '{metadata.code}' is already used in another project. "
+                    "Experiments can only be replaced within their own project."
+                )
             if not replace_existing:
                 raise IngestionError(
                     f"Experiment with code '{metadata.code}' already exists. "
                     "Use replace_existing=True to replace it."
+                )
+            if acting_user is not None and not user_can(
+                acting_user, Action.CHANGE, Experiment, existing
+            ):
+                raise IngestionPermissionError(
+                    f"You do not have permission to replace experiment '{metadata.code}'."
                 )
             _delete_existing_experiment(existing)
 
@@ -89,7 +119,7 @@ def create_experiment_from_files(
         resolved_control_chemical = control_chemical or _get_or_create_chemical("DMSO")
         unit_obj = concentration_unit or _get_or_create_unit(default_unit_symbol)
 
-        experiment = _create_experiment(project, metadata, layout, unit_obj)
+        experiment = _create_experiment(project, metadata, layout, unit_obj, created_by)
         _create_experiment_files(experiment, folder, div=metadata.div, include_layout=True)
 
         conditions, wells = _create_conditions_and_layout(
@@ -172,6 +202,7 @@ def _create_experiment(
     metadata,
     layout: ExperimentLayout,
     unit: ConcentrationUnit | None,
+    created_by: AbstractBaseUser | None = None,
 ) -> Experiment:
     sex_value = _map_sex(metadata.sex)
     exposure_type = metadata.raw.get("mea:type_of_exposure") if hasattr(metadata, "raw") else None
@@ -180,6 +211,7 @@ def _create_experiment(
 
     experiment = Experiment(
         project=project,
+        created_by=created_by,
         code=metadata.code,
         sex=sex_value,
         researcher=(metadata.raw.get("mea:experimenter") or "") if hasattr(metadata, "raw") else "",
