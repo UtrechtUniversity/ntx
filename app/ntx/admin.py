@@ -263,6 +263,7 @@ class ExperimentIngestGroupInline(admin.TabularInline):
     class Media:
         css = {"all": ("ntx/admin_ingest.css",)}
 
+
 class ExperimentIngestAdminForm(forms.ModelForm):
     class Meta:
         model = ExperimentIngest
@@ -299,18 +300,14 @@ class ExperimentIngestAdminForm(forms.ModelForm):
             raise ValidationError(str(exc)) from exc
 
         if baseline_meta.code != exposure_meta.code:
-            raise ValidationError(
-                "Baseline and exposure files must belong to the same experiment."
-            )
+            raise ValidationError("Baseline and exposure files must belong to the same experiment.")
 
         duplicates = ExperimentIngest.objects.filter(code=baseline_meta.code)
         if self.instance.pk:
             duplicates = duplicates.exclude(pk=self.instance.pk)
 
         if baseline_meta.code and duplicates.exists():
-            raise ValidationError(
-                "These experiment files have already been uploaded."
-            )
+            raise ValidationError("These experiment files have already been uploaded.")
 
         return cleaned_data
 
