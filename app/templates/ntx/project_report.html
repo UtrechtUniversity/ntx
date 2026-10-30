@@ -17,11 +17,13 @@
     {{ experiments|json_script:"experiments-data" }}
     {% url "ntx:project_report_api" slug=project.slug as project_report_api_url %}
     {% url "ntx:project_report_metadata_api" slug=project.slug as project_report_metadata_api_url %}
+    {% url "login" as login_url %}
     <section
       class="flex flex-col gap-3"
       x-data="projectReport({
         apiUrl: '{{ project_report_api_url|escapejs }}',
         metadataUrl: '{{ project_report_metadata_api_url|escapejs }}',
+        loginUrl: '{{ login_url|escapejs }}',
         plotOptions: JSON.parse(document.getElementById('plot-options-data').textContent),
         experiments: JSON.parse(document.getElementById('experiments-data').textContent),
         outlierMethod: '{{ project.outlier_method|escapejs }}'

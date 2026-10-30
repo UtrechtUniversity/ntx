@@ -13,6 +13,7 @@
       <p class="text-sm text-slate-600">
         {{ project.start_date|date:"Y-m-d"|default:"—" }} –
         {{ project.end_date|date:"Y-m-d"|default:"—" }}
+        {% if role_label %}· Your role: {{ role_label }}{% endif %}
       </p>
     </div>
 
@@ -23,6 +24,30 @@
       >
         View report
       </a>
+      {% if can_add_ingest %}
+        <a
+          href="{% url 'admin:ntx_experimentingest_add' %}?project={{ project.pk }}"
+          class="rounded-xl border border-slate-300 px-3 py-2 hover:bg-slate-50"
+        >
+          Upload experiment
+        </a>
+      {% endif %}
+      {% if can_change_project %}
+        <a
+          href="{% url 'admin:ntx_project_change' project.pk %}"
+          class="rounded-xl border border-slate-300 px-3 py-2 hover:bg-slate-50"
+        >
+          Edit project
+        </a>
+      {% endif %}
+      {% if can_delete_project %}
+        <a
+          href="{% url 'admin:ntx_project_delete' project.pk %}"
+          class="rounded-xl border border-red-300 px-3 py-2 text-red-700 hover:bg-red-50"
+        >
+          Delete project
+        </a>
+      {% endif %}
       <a href="{% url 'ntx:projects' %}" class="text-slate-700 hover:underline">
         Back to Projects
       </a>

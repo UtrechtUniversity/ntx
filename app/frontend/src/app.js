@@ -26,6 +26,7 @@ function projectReport(options = {}) {
   return {
     apiUrl: options.apiUrl, // Base API endpoint injected by the template.
     metadataUrl: options.metadataUrl, // Experiment metadata endpoint injected by the template.
+    loginUrl: options.loginUrl, // Login page for expired sessions (API responds with 401).
     plotOptions: Array.isArray(options.plotOptions) ? options.plotOptions : [], // Options for selector.
     plot: typeof options.plot === "string" ? options.plot : "", // Current plot key.
     experiments: Array.isArray(options.experiments) ? options.experiments : [], // Experiment options for selector
@@ -264,6 +265,9 @@ function projectReport(options = {}) {
         finish();
         return;
       }
+      if (this.redirectToLoginIfUnauthenticated(response)) {
+        return;
+      }
 
       let payload;
       try {
@@ -298,6 +302,17 @@ function projectReport(options = {}) {
       } else {
         this.setError("At least two parameters are required for a scatter plot.");
       }
+    },
+
+    redirectToLoginIfUnauthenticated(response) {
+      // The session expired: send the user to log in and return to this page afterwards.
+      if (response.status !== 401 || !this.loginUrl) {
+        return false;
+      }
+      const loginUrl = new URL(this.loginUrl, window.location.origin);
+      loginUrl.searchParams.set("next", window.location.pathname + window.location.search);
+      window.location.assign(loginUrl.toString());
+      return true;
     },
 
     buildUrl() {
@@ -411,6 +426,9 @@ function projectReport(options = {}) {
           this.setError("Failed to fetch report JSON.");
         }
         finish();
+        return;
+      }
+      if (this.redirectToLoginIfUnauthenticated(response)) {
         return;
       }
 
