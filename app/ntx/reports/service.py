@@ -86,6 +86,8 @@ def build_project_report_payload(
     selected_wells: list[str] | None = None,
     selected_wells_mode: str | None = None,
     outlier_method: str | OutlierMethod | None = None,
+    activity_comparison_mode: str | None = None,
+    color_by_experiment: bool = False,
 ) -> dict[str, Any]:
     """Build and serialize a Plotly report payload for a project.
 
@@ -99,9 +101,17 @@ def build_project_report_payload(
     all experiments in the project when no experiment is selected. Invalid plot, experiment,
     parameter, axis, well, display-mode, or outlier-method selections raise "ValueError".
     """
-    builder = select_plot_builder(plot)
-    scatter_requested = builder.key == "scatter"
-    param_selection_mode = builder.param_selection_mode.value
+    builders = select_plot_builders(plot)
+    scatter_requested = any(builder.key == "scatter" for builder in builders)
+    activity_comparison_requested = any(builder.key == "activity_comparison" for builder in builders)
+    param_selection_mode = builders[0].param_selection_mode.value
+
+    normalized_activity_comparison_mode: Literal["bar", "jitter"] = "bar"
+    if activity_comparison_mode is not None:
+        candidate = activity_comparison_mode.strip().lower()
+        if candidate not in {"bar", "jitter"}:
+            raise ValueError("activity_comparison_mode must be 'bar' or 'jitter'.")
+        normalized_activity_comparison_mode = candidate  # type: ignore[assignment]
 
     experiments_queryset = project.experiments.all()
     if scatter_requested and experiment is not None:
@@ -180,7 +190,11 @@ def build_project_report_payload(
             selected_wells_mode=normalized_selected_wells_mode,
         )
     else:
-        context = PlotlyBuildContext(params=selected_params)
+        context = PlotlyBuildContext(
+            params=selected_params,
+            activity_comparison_mode=normalized_activity_comparison_mode,
+            color_by_experiment=bool(color_by_experiment),
+        )
 
     cards: list[PlotlyCard] = builder.build(result, context)
 
@@ -198,6 +212,10 @@ def build_project_report_payload(
         default_selected_params=default_selected_params,
         selected_params=selected_params,
         param_selection_mode=param_selection_mode,
+        activity_comparison_mode=(
+            normalized_activity_comparison_mode if activity_comparison_requested else None
+        ),
+        color_by_experiment=(bool(color_by_experiment) if activity_comparison_requested else None),
         x_axis=x_axis,
         y_axis=y_axis,
         available_experiments=available_experiments,
