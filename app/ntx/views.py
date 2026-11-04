@@ -53,10 +53,7 @@ def project_report(request: HttpRequest, slug: str) -> HttpResponse:
     ).select_related("chemical__canonical")
 
     chemicals = sorted(
-        {
-            (condition.chemical.canonical or condition.chemical).name
-            for condition in conditions
-        }
+        {(condition.chemical.canonical or condition.chemical).name for condition in conditions}
     )
     return render(
         request,
@@ -74,16 +71,8 @@ def project_report(request: HttpRequest, slug: str) -> HttpResponse:
 @require_GET
 def project_report_api(request: HttpRequest, slug: str) -> JsonResponse:
     project = get_object_or_404(Project, slug=slug)
-    chemicals = (
-        request.GET.getlist("chemicals")
-        if "chemicals" in request.GET
-        else None
-    )
-    chemicals = (
-        [chemical for chemical in chemicals if chemical]
-        if chemicals is not None
-        else None
-    )
+    chemicals = request.GET.getlist("chemicals") if "chemicals" in request.GET else None
+    chemicals = [chemical for chemical in chemicals if chemical] if chemicals is not None else None
 
     params_input = request.GET.getlist("params")
     params: list[str] | None = None

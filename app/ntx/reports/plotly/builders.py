@@ -43,7 +43,11 @@ def _build_activity_comparison(
     result: AnalysisPipelineResult, ctx: PlotlyBuildContext
 ) -> list[PlotlyCard]:
     # Use the existing activity comparison builder.
-    return build_activity_comparison_cards(result, params=ctx.params or [], chemicals=ctx.chemicals,)
+    return build_activity_comparison_cards(
+        result,
+        params=ctx.params or [],
+        chemicals=ctx.chemicals,
+    )
 
 
 def _build_heatmap(result: AnalysisPipelineResult, ctx: PlotlyBuildContext) -> list[PlotlyCard]:
