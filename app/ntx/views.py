@@ -47,6 +47,14 @@ def project_report(request: HttpRequest, slug: str) -> HttpResponse:
     experiments = [
         {"id": exp.id, "label": f"{exp.code} ({exp.pk})"} for exp in project.experiments.all()
     ]
+    conditions = Condition.objects.filter(
+        experiment__project=project,
+        is_control=False,
+    ).select_related("chemical__canonical")
+
+    chemicals = sorted(
+        {(condition.chemical.canonical or condition.chemical).name for condition in conditions}
+    )
     return render(
         request,
         "ntx/project_report.html",
@@ -54,6 +62,7 @@ def project_report(request: HttpRequest, slug: str) -> HttpResponse:
             "project": project,
             "plot_options": plot_options,
             "experiments": experiments,
+            "chemicals": chemicals,
             "outlier_method_choices": OutlierMethod.choices,
         },
     )
@@ -62,6 +71,8 @@ def project_report(request: HttpRequest, slug: str) -> HttpResponse:
 @require_GET
 def project_report_api(request: HttpRequest, slug: str) -> JsonResponse:
     project = get_object_or_404(Project, slug=slug)
+    chemicals = request.GET.getlist("chemicals") if "chemicals" in request.GET else None
+    chemicals = [chemical for chemical in chemicals if chemical] if chemicals is not None else None
 
     params_input = request.GET.getlist("params")
     params: list[str] | None = None
@@ -106,6 +117,7 @@ def project_report_api(request: HttpRequest, slug: str) -> JsonResponse:
             project,
             plot=plot,
             params=params,
+            chemicals=chemicals,
             x_axis=x_axis,
             y_axis=y_axis,
             experiment=experiment_id,

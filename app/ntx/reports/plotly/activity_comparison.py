@@ -19,12 +19,20 @@ def build_activity_comparison_cards(
     result: AnalysisPipelineResult,
     *,
     params: Sequence[str],
+    chemicals: Sequence[str] | None = None,
 ) -> list[PlotlyCard]:
     if not params or not result.labels.params:
         return []
 
     param_lookup = {param.key: param for param in result.labels.params}
     conditions = sorted(result.labels.conditions, key=_condition_sort_key)
+    if chemicals is not None:
+        selected_chemicals = set(chemicals)
+        conditions = [
+            condition
+            for condition in conditions
+            if condition.is_control or condition.chemical in selected_chemicals
+        ]
     aggregates = {
         (record.condition_label, record.param): record
         for record in result.aggregates

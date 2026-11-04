@@ -29,6 +29,8 @@ function projectReport(options = {}) {
     plotOptions: Array.isArray(options.plotOptions) ? options.plotOptions : [], // Options for selector.
     plot: typeof options.plot === "string" ? options.plot : "", // Current plot key.
     experiments: Array.isArray(options.experiments) ? options.experiments : [], // Experiment options for selector
+    availableChemicals: Array.isArray(options.chemicals) ? options.chemicals : [],
+selectedChemicals: Array.isArray(options.chemicals) ? [...options.chemicals] : [],
     selectedExperiment:
       Array.isArray(options.experiments) && options.experiments.length > 0
         ? options.experiments[0].id
@@ -332,6 +334,17 @@ function projectReport(options = {}) {
         url.searchParams.set("experiment", String(this.selectedExperiment));
       }
       url.searchParams.set("outlier_method", this.outlierMethod);
+      if (this.plot === "activity_comparison") {
+        url.searchParams.delete("chemicals");
+
+        if (this.selectedChemicals.length === 0) {
+          url.searchParams.append("chemicals", "");
+        } else {
+          for (const chemical of this.selectedChemicals) {
+            url.searchParams.append("chemicals", chemical);
+          }
+        }
+      }
       return url;
     },
 

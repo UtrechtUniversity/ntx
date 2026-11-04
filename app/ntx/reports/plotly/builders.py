@@ -17,6 +17,7 @@ from .heatmap_mean import build_heatmap_card
 @dataclass(frozen=True, slots=True)
 class PlotlyBuildContext:
     params: Sequence[str] | None = None
+    chemicals: Sequence[str] | None = None
     x_axis: str | None = None
     y_axis: str | None = None
     selected_wells: list[str] | None = None
@@ -42,7 +43,11 @@ def _build_activity_comparison(
     result: AnalysisPipelineResult, ctx: PlotlyBuildContext
 ) -> list[PlotlyCard]:
     # Use the existing activity comparison builder.
-    return build_activity_comparison_cards(result, params=ctx.params or [])
+    return build_activity_comparison_cards(
+        result,
+        params=ctx.params or [],
+        chemicals=ctx.chemicals,
+    )
 
 
 def _build_heatmap(result: AnalysisPipelineResult, ctx: PlotlyBuildContext) -> list[PlotlyCard]:
