@@ -181,7 +181,10 @@ def build_project_report_payload(
             selected_wells_mode=normalized_selected_wells_mode,
         )
     else:
-        context = PlotlyBuildContext(params=selected_params, chemicals=chemicals,)
+        context = PlotlyBuildContext(
+            params=selected_params,
+            chemicals=chemicals,
+        )
 
     cards: list[PlotlyCard] = builder.build(result, context)
 
