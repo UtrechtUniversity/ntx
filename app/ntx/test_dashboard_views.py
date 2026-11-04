@@ -15,6 +15,13 @@ def project() -> Project:
 
 
 @pytest.fixture
+def client(client, django_user_model):
+    """A client logged in as a user without a role in `project` (everyone can view)."""
+    client.force_login(django_user_model.objects.create_user(username="reader"))
+    return client
+
+
+@pytest.fixture
 def experiment(project: Project) -> Experiment:
     return Experiment.objects.create(project=project, code="EXP-001", type=ExposureType.ACUTE)
 

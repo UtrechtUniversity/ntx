@@ -255,49 +255,49 @@ def _scatter_params(experiment: Experiment) -> dict[str, object]:
     }
 
 
-def test_scatter_api_requires_project_owned_experiment(client, scatter_api_data):
+def test_scatter_api_requires_project_owned_experiment(admin_client, scatter_api_data):
     project, selected, _, foreign = scatter_api_data
     url = reverse("ntx:project_report_api", kwargs={"slug": project.slug})
 
-    assert client.get(url, {"plot": "scatter"}).status_code == 400
+    assert admin_client.get(url, {"plot": "scatter"}).status_code == 400
     params = _scatter_params(selected)
     params["experiment"] = foreign.id
-    assert client.get(url, params).status_code == 400
+    assert admin_client.get(url, params).status_code == 400
     params["experiment"] = "not-an-id"
-    assert client.get(url, params).status_code == 400
+    assert admin_client.get(url, params).status_code == 400
 
 
-def test_scatter_api_validates_wells_and_mode(client, scatter_api_data):
+def test_scatter_api_validates_wells_and_mode(admin_client, scatter_api_data):
     project, selected, _, _ = scatter_api_data
     url = reverse("ntx:project_report_api", kwargs={"slug": project.slug})
     params = _scatter_params(selected)
 
-    invalid_well = client.get(url, {**params, "wells": "Z99"})
+    invalid_well = admin_client.get(url, {**params, "wells": "Z99"})
     assert invalid_well.status_code == 400
-    invalid_mode = client.get(url, {**params, "selected_wells_mode": "points"})
+    invalid_mode = admin_client.get(url, {**params, "selected_wells_mode": "points"})
     assert invalid_mode.status_code == 400
 
-    response = client.get(url, {**params, "wells": " a1,A1,A2 "})
+    response = admin_client.get(url, {**params, "wells": " a1,A1,A2 "})
     assert response.status_code == 200
     assert response.json()["selected_wells"] == ["A1", "A2"]
     assert response.json()["selected_wells_mode"] == "mean"
 
-    repeated = client.get(
+    repeated = admin_client.get(
         f"{url}?plot=scatter&experiment={selected.id}"
         "&x_axis=burst_duration&y_axis=spikes_per_burst&wells=A1,A2&wells=B1"
     )
     assert repeated.status_code == 200
     assert repeated.json()["selected_wells"] == ["A1", "A2", "B1"]
 
-    legacy = client.get(url, {**params, "well": "A1"})
+    legacy = admin_client.get(url, {**params, "well": "A1"})
     assert legacy.status_code == 200
     assert legacy.json()["selected_wells"] == ["A1"]
 
 
-def test_scatter_api_metadata_and_analysis_are_experiment_scoped(client, scatter_api_data):
+def test_scatter_api_metadata_and_analysis_are_experiment_scoped(admin_client, scatter_api_data):
     project, selected, _, _ = scatter_api_data
     url = reverse("ntx:project_report_api", kwargs={"slug": project.slug})
-    response = client.get(url, _scatter_params(selected))
+    response = admin_client.get(url, _scatter_params(selected))
     assert response.status_code == 200
     payload = response.json()
 
@@ -313,11 +313,11 @@ def test_scatter_api_metadata_and_analysis_are_experiment_scoped(client, scatter
     assert max(value for trace in traces for value in trace["x"]) < 1_000
 
 
-def test_report_metadata_api_is_experiment_scoped_without_axes(client, scatter_api_data):
+def test_report_metadata_api_is_experiment_scoped_without_axes(admin_client, scatter_api_data):
     project, selected, other, _ = scatter_api_data
     url = reverse("ntx:project_report_metadata_api", kwargs={"slug": project.slug})
 
-    selected_response = client.get(url, {"experiment": selected.id})
+    selected_response = admin_client.get(url, {"experiment": selected.id})
     assert selected_response.status_code == 200
     selected_payload = selected_response.json()
     assert selected_payload["selected_experiment"] == selected.id
@@ -332,7 +332,7 @@ def test_report_metadata_api_is_experiment_scoped_without_axes(client, scatter_a
         "B2",
     }
 
-    other_response = client.get(url, {"experiment": other.id})
+    other_response = admin_client.get(url, {"experiment": other.id})
     assert other_response.status_code == 200
     other_payload = other_response.json()
     assert other_payload["selected_experiment"] == other.id
@@ -350,7 +350,7 @@ def test_report_metadata_api_is_experiment_scoped_without_axes(client, scatter_a
 
 @pytest.mark.parametrize("endpoint", ["project_report_metadata_api", "project_report_api"])
 def test_scatter_options_keep_baseline_active_wells_with_missing_exposure(
-    client, scatter_api_data, endpoint
+    admin_client, scatter_api_data, endpoint
 ):
     project, selected, _, _ = scatter_api_data
     frame = NeuronalMetricsFrame.objects.get(experiment=selected)
@@ -367,7 +367,7 @@ def test_scatter_options_keep_baseline_active_wells_with_missing_exposure(
         if endpoint == "project_report_api"
         else {"experiment": selected.id}
     )
-    response = client.get(url, params)
+    response = admin_client.get(url, params)
 
     assert response.status_code == 200
     assert {item["key"] for item in response.json()["available_wells"]} == {
@@ -379,7 +379,7 @@ def test_scatter_options_keep_baseline_active_wells_with_missing_exposure(
 
 
 def test_scatter_api_rejects_selected_well_when_all_wells_fail_baseline_qc(
-    client, scatter_api_data
+    admin_client, scatter_api_data
 ):
     project, selected, _, _ = scatter_api_data
     frame = NeuronalMetricsFrame.objects.get(experiment=selected)
@@ -389,28 +389,28 @@ def test_scatter_api_rejects_selected_well_when_all_wells_fail_baseline_qc(
 
     url = reverse("ntx:project_report_api", kwargs={"slug": project.slug})
     params = _scatter_params(selected)
-    response = client.get(url, params)
+    response = admin_client.get(url, params)
     assert response.status_code == 200
     assert response.json()["available_wells"] == []
 
-    selected_response = client.get(url, {**params, "wells": "B1"})
+    selected_response = admin_client.get(url, {**params, "wells": "B1"})
     assert selected_response.status_code == 400
 
 
-def test_report_metadata_api_rejects_invalid_experiments(client, scatter_api_data):
+def test_report_metadata_api_rejects_invalid_experiments(admin_client, scatter_api_data):
     project, _, _, foreign = scatter_api_data
     url = reverse("ntx:project_report_metadata_api", kwargs={"slug": project.slug})
 
-    assert client.get(url).status_code == 400
-    assert client.get(url, {"experiment": "not-an-id"}).status_code == 400
-    assert client.get(url, {"experiment": foreign.id}).status_code == 400
+    assert admin_client.get(url).status_code == 400
+    assert admin_client.get(url, {"experiment": "not-an-id"}).status_code == 400
+    assert admin_client.get(url, {"experiment": foreign.id}).status_code == 400
 
 
-def test_non_scatter_report_echoes_selected_experiment(client, scatter_api_data):
+def test_non_scatter_report_echoes_selected_experiment(admin_client, scatter_api_data):
     project, selected, _, _ = scatter_api_data
     url = reverse("ntx:project_report_api", kwargs={"slug": project.slug})
 
-    response = client.get(
+    response = admin_client.get(
         url,
         {
             "plot": "heatmap",
