@@ -107,9 +107,7 @@ def project_report_api(request: HttpRequest, slug: str) -> JsonResponse:
     # Optional flag: color points by experiment in activity comparison jitter plots
     color_by_experiment_param = request.GET.get("color_by_experiment", "").strip() or None
     color_by_experiment = (
-        True
-        if color_by_experiment_param and color_by_experiment_param.lower() == "true"
-        else False
+        True if color_by_experiment_param and color_by_experiment_param.lower() == "true" else False
     )
 
     # Optional experiment selection: one for scatter, one or more for other plots.
@@ -123,9 +121,7 @@ def project_report_api(request: HttpRequest, slug: str) -> JsonResponse:
     # Chemical names can contain commas, so chemicals and concentrations are
     # only accepted as repeated params (?chemical=A&chemical=B).
     chemicals = [item.strip() for item in request.GET.getlist("chemical") if item.strip()]
-    concentrations = [
-        item.strip() for item in request.GET.getlist("concentration") if item.strip()
-    ]
+    concentrations = [item.strip() for item in request.GET.getlist("concentration") if item.strip()]
 
     # Support plural `wells` query param (comma-separated or multiple params)
     wells_input = request.GET.getlist("wells")

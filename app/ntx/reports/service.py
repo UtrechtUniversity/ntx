@@ -391,7 +391,7 @@ def _filter_result_for_condition_selection(
     concentrations: Sequence[str],
 ) -> AnalysisPipelineResult:
     """Keep conditions whose chemical AND concentration are selected (empty = any),
-      plus controls."""
+    plus controls."""
     if not chemicals and not concentrations:
         return result
 
@@ -412,9 +412,7 @@ def _filter_result_for_condition_selection(
         matched_non_control = True
 
     if not matched_non_control:
-        raise ValueError(
-            "No conditions match the requested chemical/concentration selection."
-        )
+        raise ValueError("No conditions match the requested chemical/concentration selection.")
 
     for condition in result.labels.conditions:
         if condition.is_control and condition.label in result.labels.control_map:

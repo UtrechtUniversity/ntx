@@ -20,8 +20,16 @@ HOVER_TEMPLATE = "%{x}<br>%{y:.2f}%<extra></extra>"
 # color_by_experiment is on. Assigned cyclically by sorted experiment_id, so
 # a given experiment gets the same color across every card in the report.
 EXPERIMENT_COLOR_PALETTE = [
-    "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
-    "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf",
+    "#1f77b4",
+    "#ff7f0e",
+    "#2ca02c",
+    "#d62728",
+    "#9467bd",
+    "#8c564b",
+    "#e377c2",
+    "#7f7f7f",
+    "#bcbd22",
+    "#17becf",
 ]
 
 
