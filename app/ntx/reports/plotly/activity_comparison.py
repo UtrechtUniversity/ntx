@@ -7,7 +7,7 @@ from typing import Any, Literal
 import plotly.graph_objects as go
 
 from ntx.analysis.dtos import AnalysisPipelineResult, ConditionInfo, ParamInfo
-from ntx.analysis.stats import p_value_to_stars, run_tukey_pairwise_against_control
+from ntx.analysis.stats import run_tukey_pairwise_against_control
 
 from .contracts import PlotlyCard, PlotlyFigure
 from .serialize import serialize_figure

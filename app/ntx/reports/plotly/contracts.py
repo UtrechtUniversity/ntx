@@ -66,7 +66,17 @@ class ProjectReportPayload(BaseModel):
     y_axis: str | None = None
     # Experiments available for this project-level report
     available_experiments: list[dict[str, object]] = Field(default_factory=list)
+    # Set only when exactly one experiment is in scope (always the case for scatter).
     selected_experiment: int | None = None
+    # Multi-select filters; omitted (None) means "all".
+    selected_experiments: list[int] | None = None
+    selected_chemicals: list[str] | None = None
+    selected_concentrations: list[str] | None = None
+    # Cascading filter options: chemicals -> concentrations (of the selected
+    # chemicals) -> experiments (that contain the selected chemical/concentration).
+    available_chemicals: list[str] = Field(default_factory=list)
+    available_concentrations: list[str] = Field(default_factory=list)
+    available_experiment_ids: list[int] = Field(default_factory=list)
     available_wells: list[PlotlyWellOption] = Field(default_factory=list)
     selected_wells: list[str] | None = None
     selected_wells_mode: str | None = None

@@ -15,6 +15,7 @@ from .reports.service import (
     build_project_report_experiment_metadata_payload,
     build_project_report_payload,
 )
+from .utils import normalize_decimals
 
 
 class _ViewDecorator(Protocol):
@@ -47,6 +48,25 @@ def project_report(request: HttpRequest, slug: str) -> HttpResponse:
     experiments = [
         {"id": exp.id, "label": f"{exp.code} ({exp.pk})"} for exp in project.experiments.all()
     ]
+    # Initial filter options for "All experiments". The report API replaces them
+    # with the options for the selected experiment on every response. Use the
+    # canonical chemical name and skip controls, to match the analysis labels
+    # that the API filter compares against.
+    conditions = Condition.objects.filter(
+        experiment__project=project,
+        is_control=False,
+    ).select_related("chemical__canonical")
+    chemical_options = sorted(
+        {(condition.chemical.canonical or condition.chemical).name for condition in conditions}
+    )
+    concentration_options = sorted(
+        {
+            normalize_decimals(condition.concentration)
+            for condition in conditions
+            if condition.concentration is not None
+        },
+        key=float,
+    )
     return render(
         request,
         "ntx/project_report.html",
@@ -54,6 +74,8 @@ def project_report(request: HttpRequest, slug: str) -> HttpResponse:
             "project": project,
             "plot_options": plot_options,
             "experiments": experiments,
+            "chemical_options": chemical_options,
+            "concentration_options": concentration_options,
             "outlier_method_choices": OutlierMethod.choices,
         },
     )
@@ -90,8 +112,20 @@ def project_report_api(request: HttpRequest, slug: str) -> JsonResponse:
         else False
     )
 
-    # Optional experiment selection (required for scatter plots).
-    experiment_param = request.GET.get("experiment")
+    # Optional experiment selection: one for scatter, one or more for other plots.
+    # Accepts repeated params (?experiment=1&experiment=2) and comma lists (?experiment=1,2).
+    experiment_tokens = [
+        token.strip()
+        for item in request.GET.getlist("experiment")
+        for token in item.split(",")
+        if token.strip()
+    ]
+    # Chemical names can contain commas, so chemicals and concentrations are
+    # only accepted as repeated params (?chemical=A&chemical=B).
+    chemicals = [item.strip() for item in request.GET.getlist("chemical") if item.strip()]
+    concentrations = [
+        item.strip() for item in request.GET.getlist("concentration") if item.strip()
+    ]
 
     # Support plural `wells` query param (comma-separated or multiple params)
     wells_input = request.GET.getlist("wells")
@@ -107,16 +141,16 @@ def project_report_api(request: HttpRequest, slug: str) -> JsonResponse:
     selected_wells_mode = request.GET.get("selected_wells_mode", "").strip() or None
 
     try:
-        experiment_id = (
-            int(experiment_param) if experiment_param and experiment_param.strip() else None
-        )
+        experiment_ids = [int(token) for token in experiment_tokens]
         payload = build_project_report_payload(
             project,
             plot=plot,
             params=params,
             x_axis=x_axis,
             y_axis=y_axis,
-            experiment=experiment_id,
+            experiments=experiment_ids,
+            chemicals=chemicals,
+            concentrations=concentrations,
             selected_wells=selected_wells,
             selected_wells_mode=selected_wells_mode,
             outlier_method=outlier_method,

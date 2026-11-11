@@ -29,12 +29,12 @@ function projectReport(options = {}) {
     plotOptions: Array.isArray(options.plotOptions) ? options.plotOptions : [], // Options for selector.
     plot: typeof options.plot === "string" ? options.plot : "", // Current plot key.
     experiments: Array.isArray(options.experiments) ? options.experiments : [], // Experiment options for selector
+    chemicalOptions: Array.isArray(options.chemicalOptions) ? options.chemicalOptions : [],
+    concentrationOptions: Array.isArray(options.concentrationOptions) ? options.concentrationOptions : [],
     selectedExperiment: (() => {
-      // Initial default depends on which plot the page is landing on:
-      // scatter (xy_axes) can't function with "All experiments" - it needs
-      // one real id - while bar/jitter/heatmap/concentration-response
-      // (multiple) default to "" (All), matching today's existing behavior
-      // where those reports were never scoped to a single experiment.
+      // Single experiment for the scatter (xy_axes) plot, which needs one real
+      // id. The activity comparison plot uses selectedExperiments instead;
+      // heatmap and concentration-response always analyze every experiment.
       const initialExperiments = Array.isArray(options.experiments) ? options.experiments : [];
       if (initialExperiments.length === 0) {
         return null;
@@ -56,6 +56,11 @@ function projectReport(options = {}) {
     yAxis: "", // Selected Y-axis parameter for scatter plot.
     selectedWells: [], // Selected wells for scatter plot (empty = all wells, single/multiple = subset).
     selectedWellsMode: "mean", // Display mode for multi-well scatter points.
+    selectedExperiments: [], // Activity comparison experiment ids (empty = all experiments).
+    selectedChemicals: [], // Activity comparison chemicals (empty = all chemicals).
+    selectedConcentrations: [], // Activity comparison concentrations (empty = all).
+    availableExperimentIds: null, // Experiment ids matching the chemical/concentration filters (null = all).
+    filterLoadTimer: null, // Debounce timer for multi-select filter changes.
     availableWells: [], // Well options for the selected experiment.
     availableWellsExperiment: null, // Experiment id represented by availableWells.
     xAxisSearch: "", // Search text for X-axis dropdown.
@@ -99,12 +104,73 @@ function projectReport(options = {}) {
 
     get canColorByExperiment() {
       // Only allow coloring by experiment for the activity_comparison plot when
-      // in jitter mode across multiple experiments (i.e. not scoped to one).
+      // in jitter mode across more than one experiment (none selected = all).
+      const experimentsInScope =
+        this.selectedExperiments.length || this.experimentOptions.length;
       return (
         this.plot === "activity_comparison" &&
         this.activityComparisonMode === "jitter" &&
-        (this.selectedExperiment === "" || this.selectedExperiment === null)
+        experimentsInScope > 1
       );
+    },
+
+    get experimentOptions() {
+      // Experiments offered in the activity comparison filter: only those that
+      // contain the selected chemicals/concentrations (all before the first load).
+      if (!Array.isArray(this.availableExperimentIds)) {
+        return this.experiments;
+      }
+      const allowed = new Set(this.availableExperimentIds.map(Number));
+      return this.experiments.filter((exp) => allowed.has(Number(exp.id)));
+    },
+
+    get experimentsSummary() {
+      return this.summarizeSelection(
+        this.selectedExperiments.map((id) => this.getExperimentLabel(id)),
+        "All experiments",
+        "experiments"
+      );
+    },
+
+    get chemicalsSummary() {
+      return this.summarizeSelection(this.selectedChemicals, "All chemicals", "chemicals");
+    },
+
+    get concentrationsSummary() {
+      return this.summarizeSelection(
+        this.selectedConcentrations,
+        "All concentrations",
+        "concentrations"
+      );
+    },
+
+    summarizeSelection(labels, allLabel, noun) {
+      // Button text for a multi-select: "All ...", the single label, or "N ...".
+      if (labels.length === 0) {
+        return allLabel;
+      }
+      if (labels.length === 1) {
+        return labels[0];
+      }
+      return `${labels.length} ${noun}`;
+    },
+
+    scheduleFilterLoad() {
+      // Multi-select filters reload after a short pause, so ticking several
+      // boxes sends one request. Bump requestId now so a response that is
+      // already in flight cannot overwrite the new selection.
+      this.requestId++;
+      clearTimeout(this.filterLoadTimer);
+      this.filterLoadTimer = setTimeout(() => this.load(), 400);
+    },
+
+    clearFilter(name) {
+      // name: "selectedExperiments" | "selectedChemicals" | "selectedConcentrations"
+      if (this[name].length === 0) {
+        return;
+      }
+      this[name] = [];
+      this.scheduleFilterLoad();
     },
 
     filteredXParams() {
@@ -212,7 +278,10 @@ function projectReport(options = {}) {
           // previously had that selected while on a multiple-mode report,
           // fall back to the first available experiment so it can load.
           if (!this.selectedExperiment && this.experiments.length > 0) {
-            this.selectedExperiment = this.experiments[0].id;
+            this.selectedExperiment =
+              this.selectedExperiments.length > 0
+                ? this.selectedExperiments[0]
+                : this.experiments[0].id;
           }
           return true;
         }
@@ -368,23 +437,30 @@ function projectReport(options = {}) {
         }
         if (this.plot === "activity_comparison") {
           url.searchParams.set("activity_comparison_mode", this.activityComparisonMode);
+          // Repeated params: chemical names may contain commas.
+          for (const experimentId of this.selectedExperiments) {
+            url.searchParams.append("experiment", String(experimentId));
+          }
+          for (const chemical of this.selectedChemicals) {
+            url.searchParams.append("chemical", chemical);
+          }
+          for (const concentration of this.selectedConcentrations) {
+            url.searchParams.append("concentration", concentration);
+          }
         }
       }
 
       // Plot is required by the API, so always include a valid selection.
       url.searchParams.set("plot", this.plot);
-      // Only activity_comparison and scatter are scoped to a specific
-      // experiment. Heatmap and concentration-response always analyze every
-      // experiment in the project - never send the filter for them, even if
-      // selectedExperiment holds a real id left over from switching tabs
-      // after using it on activity_comparison or scatter.
-      const experimentScopedPlot =
-        this.plot === "activity_comparison" || this.paramSelectionMode === "xy_axes";
-      if (experimentScopedPlot && this.selectedExperiment) {
+      // Scatter is scoped to exactly one experiment; activity_comparison
+      // sends its experiment list above. Heatmap and concentration-response
+      // always analyze every experiment in the project - never send the
+      // filter for them.
+      if (this.paramSelectionMode === "xy_axes" && this.selectedExperiment) {
         url.searchParams.set("experiment", String(this.selectedExperiment));
       }
       // Allow the jitter plot to request coloring by experiment.
-      if (this.plot === "activity_comparison" && this.colorByExperiment) {
+      if (this.canColorByExperiment && this.colorByExperiment) {
         url.searchParams.set("color_by_experiment", "true");
       }
       url.searchParams.set("outlier_method", this.outlierMethod);
@@ -407,15 +483,37 @@ function projectReport(options = {}) {
       if (payload.y_axis) {
         this.yAxis = payload.y_axis;
       }
+      // Cascading filters: chemicals -> concentrations -> experiments. The
+      // backend drops selections that are no longer valid; it omits null
+      // fields (exclude_none), so a missing key means "All".
+      if (this.plot === "activity_comparison") {
+        if (Array.isArray(payload.available_chemicals)) {
+          this.chemicalOptions = payload.available_chemicals;
+        }
+        if (Array.isArray(payload.available_concentrations)) {
+          this.concentrationOptions = payload.available_concentrations;
+        }
+        if (Array.isArray(payload.available_experiment_ids)) {
+          this.availableExperimentIds = payload.available_experiment_ids;
+        }
+        this.selectedExperiments = Array.isArray(payload.selected_experiments)
+          ? payload.selected_experiments
+          : [];
+        this.selectedChemicals = Array.isArray(payload.selected_chemicals)
+          ? payload.selected_chemicals
+          : [];
+        this.selectedConcentrations = Array.isArray(payload.selected_concentrations)
+          ? payload.selected_concentrations
+          : [];
+      }
       // Experiments metadata
       this.experiments = Array.isArray(payload.available_experiments)
         ? payload.available_experiments
         : this.experiments;
-      // selected_experiment is omitted by the backend entirely (exclude_none)
-      // when the report was scoped to "All experiments" - so this correctly
-      // leaves this.selectedExperiment (e.g. "") untouched in that case,
-      // rather than only reflecting a real id back when one was chosen.
-      if (payload.selected_experiment) {
+      // selected_experiment is the scatter plot's single experiment. Other
+      // plots may also echo it (exactly one experiment in scope), but they
+      // track their selection in selectedExperiments, so ignore it there.
+      if (this.paramSelectionMode === "xy_axes" && payload.selected_experiment) {
         this.selectedExperiment = payload.selected_experiment;
         this.availableWells = Array.isArray(payload.available_wells)
           ? payload.available_wells

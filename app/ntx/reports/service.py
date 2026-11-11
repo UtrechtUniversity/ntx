@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Sequence
+from dataclasses import dataclass, field
+from decimal import Decimal
 from typing import Any, Literal
 
 from django.db.models import Prefetch
 
-from ntx.analysis.dtos import AnalysisPipelineResult, ParamInfo
+from ntx.analysis.dtos import AnalysisLabels, AnalysisPipelineResult, ParamInfo
 from ntx.analysis.pipeline import (
     _condition_display_label,
     build_param_infos,
@@ -22,6 +24,7 @@ from ntx.reports.plotly.contracts import (
     ProjectReportExperimentMetadataPayload,
     ProjectReportPayload,
 )
+from ntx.utils import normalize_decimals
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +86,9 @@ def build_project_report_payload(
     x_axis: str | None = None,
     y_axis: str | None = None,
     experiment: int | None = None,
+    experiments: Sequence[int] | None = None,
+    chemicals: Sequence[str] | None = None,
+    concentrations: Sequence[str] | None = None,
     selected_wells: list[str] | None = None,
     selected_wells_mode: str | None = None,
     outlier_method: str | OutlierMethod | None = None,
@@ -97,8 +103,11 @@ def build_project_report_payload(
     "selected_wells_mode" defaults to "mean". Scatter payloads also include the selected
     experiment, its available wells, the normalized well selection, and the effective display mode.
 
-    Non-scatter reports use "params" and analyze either the selected project-owned experiment or
-    all experiments in the project when no experiment is selected. Invalid plot, experiment,
+    Non-scatter reports use "params" and analyze the selected project-owned experiments
+    ("experiment" and/or "experiments"), or all experiments in the project when none is selected.
+    "chemicals", "concentrations" and "experiments" cascade in that order: each one only accepts
+    values that exist together with the selections before it (empty = all); other values are
+    dropped. Invalid plot, experiment,
     parameter, axis, well, display-mode, or outlier-method selections raise "ValueError".
     """
     builder = select_plot_builder(plot)
@@ -113,36 +122,72 @@ def build_project_report_payload(
             raise ValueError("activity_comparison_mode must be 'bar' or 'jitter'.")
         normalized_activity_comparison_mode = candidate  # type: ignore[assignment]
 
+    # Merge the single "experiment" (scatter, legacy callers) with the
+    # multi-select "experiments" list, keeping the user's order, no duplicates.
+    requested_experiment_ids: list[int] = []
+    for candidate_id in [*([experiment] if experiment is not None else []), *(experiments or [])]:
+        if candidate_id not in requested_experiment_ids:
+            requested_experiment_ids.append(candidate_id)
+    if scatter_requested and len(requested_experiment_ids) > 1:
+        raise ValueError("Scatter plot requires exactly one experiment.")
+
     experiments_queryset = project.experiments.all()
-    if scatter_requested and experiment is not None:
-        condition_queryset = Condition.objects.filter(experiment_id=experiment).select_related(
+    if scatter_requested and requested_experiment_ids:
+        condition_queryset = Condition.objects.filter(
+            experiment_id=requested_experiment_ids[0]
+        ).select_related(
             "chemical__canonical",
             "unit__canonical",
         )
         experiments_queryset = experiments_queryset.prefetch_related(
             Prefetch("conditions", queryset=condition_queryset)
         )
-    experiments = list(experiments_queryset)
-    experiment_by_id = {item.id: item for item in experiments}
-    selected_experiment = experiment_by_id.get(experiment) if experiment is not None else None
+    project_experiments = list(experiments_queryset)
+    experiment_by_id = {item.id: item for item in project_experiments}
+    if any(item_id not in experiment_by_id for item_id in requested_experiment_ids):
+        raise ValueError("Selected experiment does not belong to this project.")
+    selected_experiments = [experiment_by_id[item_id] for item_id in requested_experiment_ids]
+    # Echoed as "selected_experiment" only when exactly one experiment is in scope.
+    selected_experiment = selected_experiments[0] if len(selected_experiments) == 1 else None
     scatter_experiment: Experiment | None = None
 
+    filters = _ConditionFilterSelection()
     if scatter_requested:
-        if experiment is None:
-            raise ValueError("Scatter plot requires an experiment.")
         if selected_experiment is None:
-            raise ValueError("Selected experiment does not belong to this project.")
+            raise ValueError("Scatter plot requires an experiment.")
         scatter_experiment = selected_experiment
         experiment_ids = [selected_experiment.id]
-    elif experiment is not None:
-        if selected_experiment is None:
-            raise ValueError("Selected experiment does not belong to this project.")
-        experiment_ids = [selected_experiment.id]
     else:
-        experiment_ids = list(experiment_by_id)
+        # Cascading filters, top to bottom: chemicals -> concentrations ->
+        # experiments. Each list only offers values that exist together with
+        # the selections above it. Selections that are no longer valid are
+        # dropped, not rejected. An empty selection means "all".
+        filters = _resolve_condition_filters(
+            project,
+            [item.id for item in project_experiments],
+            chemicals=chemicals,
+            concentrations=concentrations,
+        )
+        available_experiment_ids = set(filters.available_experiment_ids)
+        selected_experiments = [
+            item for item in selected_experiments if item.id in available_experiment_ids
+        ]
+        selected_experiment = selected_experiments[0] if len(selected_experiments) == 1 else None
+        # No experiment ticked: analyze every experiment that matches the
+        # chemical/concentration selection (all experiments when unfiltered).
+        experiment_ids = [item.id for item in selected_experiments] or list(
+            filters.available_experiment_ids
+        )
 
     selected_outlier_method = OutlierMethod(outlier_method or project.outlier_method)
     result = run_experiment_analysis(experiment_ids, outlier_method=selected_outlier_method)
+
+    if filters.selected_chemicals or filters.selected_concentrations:
+        result = _filter_result_for_condition_selection(
+            result,
+            chemicals=filters.selected_chemicals,
+            concentrations=filters.selected_concentrations,
+        )
 
     normalized_selected_wells: list[str] | None = None
     normalized_selected_wells_mode: Literal["mean", "individual"] | None = None
@@ -199,7 +244,7 @@ def build_project_report_payload(
     cards: list[PlotlyCard] = builder.build(result, context)
 
     available_experiments = [
-        {"id": item.id, "label": f"{item.code} ({item.pk})"} for item in experiments
+        {"id": item.id, "label": f"{item.code} ({item.pk})"} for item in project_experiments
     ]
     available_wells = (
         _build_active_well_options(scatter_experiment, result)
@@ -220,6 +265,12 @@ def build_project_report_payload(
         y_axis=y_axis,
         available_experiments=available_experiments,
         selected_experiment=(selected_experiment.id if selected_experiment is not None else None),
+        selected_experiments=[item.id for item in selected_experiments] or None,
+        selected_chemicals=filters.selected_chemicals or None,
+        selected_concentrations=filters.selected_concentrations or None,
+        available_chemicals=filters.available_chemicals,
+        available_concentrations=filters.available_concentrations,
+        available_experiment_ids=filters.available_experiment_ids,
         available_wells=available_wells,
         selected_wells=(normalized_selected_wells if param_selection_mode == "xy_axes" else None),
         selected_wells_mode=(
@@ -227,6 +278,184 @@ def build_project_report_payload(
         ),
     )
     return payload.model_dump(mode="json", exclude_none=True)
+
+
+@dataclass(slots=True)
+class _ConditionFilterSelection:
+    """Cascading chemical -> concentration -> experiment filter state."""
+
+    available_chemicals: list[str] = field(default_factory=list)
+    selected_chemicals: list[str] = field(default_factory=list)
+    available_concentrations: list[str] = field(default_factory=list)
+    selected_concentrations: list[str] = field(default_factory=list)
+    available_experiment_ids: list[int] = field(default_factory=list)
+
+
+def _resolve_condition_filters(
+    project: Project,
+    project_experiment_ids: Sequence[int],
+    *,
+    chemicals: Sequence[str] | None,
+    concentrations: Sequence[str] | None,
+) -> _ConditionFilterSelection:
+    """Resolve the cascading filters from the project's non-control conditions.
+
+    - Chemicals: every non-control chemical in the project (canonical name,
+      the same name the analysis labels use).
+    - Concentrations: those of the selected chemicals (all chemicals if none).
+    - Experiments: those with a condition that matches both selections (all
+      project experiments if nothing is selected).
+
+    Requested values that are not available are dropped.
+    """
+    rows: list[tuple[int, str, Decimal | None]] = [
+        (
+            condition.experiment_id,
+            (condition.chemical.canonical or condition.chemical).name,
+            condition.concentration,
+        )
+        for condition in Condition.objects.filter(
+            experiment__project=project,
+            is_control=False,
+        ).select_related("chemical__canonical")
+    ]
+
+    available_chemicals = sorted({name for _, name, _ in rows})
+    selected_chemicals = [
+        name for name in _normalize_text_values(chemicals) if name in available_chemicals
+    ]
+    if selected_chemicals:
+        chemical_set = set(selected_chemicals)
+        rows = [row for row in rows if row[1] in chemical_set]
+
+    # Decimal keys compare by value, so 1.000000 and 1 are one option.
+    labels_by_value: dict[Decimal, str] = {}
+    for _, _, value in rows:
+        if value is not None:
+            labels_by_value.setdefault(value, normalize_decimals(value))
+    available_concentrations = [labels_by_value[value] for value in sorted(labels_by_value)]
+    requested_concentrations = _normalize_text_values(concentrations)
+    selected_concentrations = [
+        option
+        for option in available_concentrations
+        if any(
+            _concentration_matches(float(option), candidate)
+            for candidate in requested_concentrations
+        )
+    ]
+    if selected_concentrations:
+        rows = [
+            row
+            for row in rows
+            if row[2] is not None
+            and any(
+                _concentration_matches(float(row[2]), candidate)
+                for candidate in selected_concentrations
+            )
+        ]
+
+    if selected_chemicals or selected_concentrations:
+        matching_ids = {experiment_id for experiment_id, _, _ in rows}
+        available_experiment_ids = [
+            item_id for item_id in project_experiment_ids if item_id in matching_ids
+        ]
+    else:
+        available_experiment_ids = list(project_experiment_ids)
+
+    return _ConditionFilterSelection(
+        available_chemicals=available_chemicals,
+        selected_chemicals=selected_chemicals,
+        available_concentrations=available_concentrations,
+        selected_concentrations=selected_concentrations,
+        available_experiment_ids=available_experiment_ids,
+    )
+
+
+def _normalize_text_values(values: Sequence[str] | None) -> list[str]:
+    """Strip, drop empty values and deduplicate while keeping order."""
+    normalized: list[str] = []
+    for value in values or []:
+        item = value.strip()
+        if item and item not in normalized:
+            normalized.append(item)
+    return normalized
+
+
+def _filter_result_for_condition_selection(
+    result: AnalysisPipelineResult,
+    *,
+    chemicals: Sequence[str],
+    concentrations: Sequence[str],
+) -> AnalysisPipelineResult:
+    """Keep conditions whose chemical AND concentration are selected (empty = any),
+      plus controls."""
+    if not chemicals and not concentrations:
+        return result
+
+    chemical_set = set(chemicals)
+    selected_labels: set[str] = set()
+    matched_non_control = False
+    for condition in result.labels.conditions:
+        if condition.is_control:
+            continue
+        if chemical_set and condition.chemical not in chemical_set:
+            continue
+        if concentrations and not any(
+            _concentration_matches(condition.concentration, candidate)
+            for candidate in concentrations
+        ):
+            continue
+        selected_labels.add(condition.label)
+        matched_non_control = True
+
+    if not matched_non_control:
+        raise ValueError(
+            "No conditions match the requested chemical/concentration selection."
+        )
+
+    for condition in result.labels.conditions:
+        if condition.is_control and condition.label in result.labels.control_map:
+            selected_labels.add(condition.label)
+
+    filtered_conditions = [
+        condition for condition in result.labels.conditions if condition.label in selected_labels
+    ]
+    filtered_control_map = {
+        key: value
+        for key, value in result.labels.control_map.items()
+        if key in selected_labels or value in selected_labels
+    }
+
+    return AnalysisPipelineResult(
+        labels=AnalysisLabels(
+            params=result.labels.params,
+            conditions=filtered_conditions,
+            control_map=filtered_control_map,
+        ),
+        pre_outlier=[
+            record for record in result.pre_outlier if record.condition_label in selected_labels
+        ],
+        post_outlier=[
+            record for record in result.post_outlier if record.condition_label in selected_labels
+        ],
+        fences=[record for record in result.fences if record.condition_label in selected_labels],
+        aggregates=[
+            record for record in result.aggregates if record.condition_label in selected_labels
+        ],
+        outliers=[
+            record for record in result.outliers if record.condition_label in selected_labels
+        ],
+    )
+
+
+def _concentration_matches(value: float | None, candidate: str) -> bool:
+    if value is None:
+        return False
+    try:
+        target = float(candidate)
+    except ValueError:
+        return str(value) == candidate or str(value).rstrip("0").rstrip(".") == candidate
+    return abs(value - target) < 1e-9
 
 
 def _resolve_selected_params(
