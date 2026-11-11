@@ -189,6 +189,9 @@ def build_project_report_payload(
             concentrations=filters.selected_concentrations,
         )
 
+    selected_outlier_method = OutlierMethod(outlier_method or project.outlier_method)
+    result = run_experiment_analysis(experiment_ids, outlier_method=selected_outlier_method)
+
     normalized_selected_wells: list[str] | None = None
     normalized_selected_wells_mode: Literal["mean", "individual"] | None = None
     active_wells: set[str] = set()
