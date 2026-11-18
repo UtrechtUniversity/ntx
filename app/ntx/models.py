@@ -24,6 +24,9 @@ from .exposure_types import (
 from .metrics_schema import MetricsPayload, MetricsQcPayload
 from .utils import sanitize_numeric_json
 
+if TYPE_CHECKING:
+    from django.db.models.fields.related_descriptors import ReverseManyToOneDescriptor
+
 User = get_user_model()
 
 WELL_RE = re.compile(r"^[A-Za-z](\d+)$")
@@ -99,7 +102,7 @@ class OutlierMethod(models.TextChoices):
 
 class Project(TimeStampedModel):
     if TYPE_CHECKING:
-        experiments: models.Manager["Experiment"]
+        experiments: ReverseManyToOneDescriptor["Experiment"]
 
     name = models.CharField(max_length=255)
     slug = models.SlugField(unique=True)
@@ -255,9 +258,9 @@ class Sex(models.TextChoices):
 
 class Experiment(TimeStampedModel):
     if TYPE_CHECKING:
-        conditions: models.Manager["Condition"]
-        files: models.Manager["ExperimentFile"]
-        neuronal_metrics_frames: models.Manager["NeuronalMetricsFrame"]
+        conditions: ReverseManyToOneDescriptor["Condition"]
+        files: ReverseManyToOneDescriptor["ExperimentFile"]
+        neuronal_metrics_frames: ReverseManyToOneDescriptor["NeuronalMetricsFrame"]
 
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="experiments")
     code = models.CharField(max_length=128, blank=False, null=False, unique=True)
@@ -471,7 +474,7 @@ class NeuronalMetricsFrame(TimeStampedModel):
 class ExperimentIngest(TimeStampedModel):
     if TYPE_CHECKING:
         project_id: int
-        ingest_groups: models.Manager["ExperimentIngestGroup"]
+        ingest_groups: ReverseManyToOneDescriptor["ExperimentIngestGroup"]
 
     class Status(models.TextChoices):
         PENDING = "PENDING", "Pending"
