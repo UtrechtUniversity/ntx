@@ -2,11 +2,11 @@
 #    uv pip compile requirements/base.in --universal --output-file requirements/base.txt
 annotated-types==0.8.0
     # via pydantic
-asgiref==3.12.1
+asgiref==3.13.0
     # via django
 dj-database-url==3.1.2
     # via -r requirements/base.in
-django==5.2.17
+django==5.2.19
     # via
     #   -r requirements/base.in
     #   dj-database-url
@@ -18,11 +18,11 @@ formulaic==1.2.2
     # via statsmodels
 interface-meta==2.0.1
     # via formulaic
-narwhals==2.25.0
+narwhals==2.29.0
     # via
     #   formulaic
     #   plotly
-numpy==2.5.2
+numpy==2.5.5
     # via
     #   -r requirements/base.in
     #   formulaic
@@ -44,28 +44,26 @@ pandas==2.3.3
     #   statsmodels
 patsy==1.0.3
     # via statsmodels
-plotly==7.0.0
+plotly==7.1.0
     # via -r requirements/base.in
-polars==1.44.1
+polars==2.1.0
     # via -r requirements/base.in
-polars-runtime-32==1.44.1
+polars-runtime-32==2.1.0
     # via polars
-pydantic==2.13.5
+pydantic==2.14.3
     # via -r requirements/base.in
-pydantic-core==2.46.5
+pydantic-core==2.50.4
     # via pydantic
-python-dateutil==2.9.0.post0
+python-dateutil==4.0.0
     # via pandas
-pytz==2026.3.post1
+pytz==2026.6
     # via pandas
 scipy==1.18.1
     # via
     #   -r requirements/base.in
     #   formulaic
     #   statsmodels
-six==1.17.0
-    # via python-dateutil
-sqlparse==0.6.0
+sqlparse==0.6.1
     # via django
 statsmodels==0.15.0
     # via -r requirements/base.in
@@ -75,11 +73,12 @@ typing-extensions==4.16.0
     #   pydantic
     #   pydantic-core
     #   typing-inspection
-typing-inspection==0.4.4
+typing-inspection==0.4.5
     # via pydantic
-tzdata==2026.3
+tzdata==2026.6
     # via
     #   django
     #   pandas
-wrapt==2.4.0
+    #   python-dateutil
+wrapt==2.5.2
     # via formulaic
