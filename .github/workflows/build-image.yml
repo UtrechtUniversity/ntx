@@ -1,11 +1,20 @@
-# Build and publish the container image to GitHub Container Registry.
+# Build and test the container image. Pushing to develop and manual runs
+# also publish the verified image to GitHub Container Registry;
+# pull requests only build and verify.
 name: Build image
 
 on:
   push:
     branches:
       - develop
+  pull_request:
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
+
+# Supersede stale PR runs, but let every publishing run finish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Deny all token scopes by default. The build job grants only what it needs.
 permissions: {}
@@ -38,33 +47,33 @@ jobs:
           driver: docker
 
       - name: Login to GitHub Container Registry
+        if: ${{ github.event_name != 'pull_request' }}
         uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push image
+      - name: Build production image
         uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Containerfile
-          # Publish the image, not the local dev target.
           target: cloud
           platforms: linux/amd64
-          push: true
+          load: true
           tags: |
             ${{ env.IMAGE_NAME }}:${{ github.sha }}
             ${{ env.IMAGE_NAME }}:${{ env.REF_TAG }}
 
-      - name: Verify the image starts as non-root and not as any other user known to the container (ie. 1000=app)
+      - name: Verify Django serves requests under an arbitrary UID
+        timeout-minutes: 2
         run: |
-          docker pull "${IMAGE_NAME}:${GITHUB_SHA}"
-          # Supply placeholder email settings required by production image
-          set +e
-          timeout 7 docker run --rm \
+          trap 'docker logs ntx-smoke; docker rm -f ntx-smoke > /dev/null' EXIT
+
+          docker run -d --name ntx-smoke --pull=never \
             -u 1001:0 \
-            -p 8000:8000 \
+            -p 127.0.0.1:8000:8000 \
             -e DJANGO_SECRET_KEY=ci-smoke \
             -e ALLOWED_HOSTS=localhost \
             -e DATABASE_URL=sqlite:////tmp/smoke.sqlite3 \
@@ -75,11 +84,15 @@ jobs:
             -e DJANGO_SUPERUSER_USERNAME=ci-admin \
             -e DJANGO_SUPERUSER_PASSWORD="${GITHUB_SHA}" \
             "${IMAGE_NAME}:${GITHUB_SHA}"
-          status="$?"
-          set -e
 
-          # Gunicorn should still be running when timeout stops the smoke test.
-          if [ "$status" -ne 124 ]; then
-            echo "Expected the container to keep running until timeout, got exit status $status."
-            exit 1
-          fi
+          # Retry until gunicorn accepts connections and Django answers with 2xx.
+          curl --fail --silent --show-error --output /dev/null \
+            --retry 60 --retry-delay 1 --retry-max-time 60 --retry-all-errors \
+            --max-time 2 \
+            http://localhost:8000/accounts/login/
+
+      - name: Push verified image
+        if: ${{ github.event_name != 'pull_request' }}
+        run: |
+          docker push "${IMAGE_NAME}:${GITHUB_SHA}"
+          docker push "${IMAGE_NAME}:${REF_TAG}"
