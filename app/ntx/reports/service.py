@@ -80,6 +80,7 @@ def build_project_report_payload(
     *,
     plot: str | None,
     params: Sequence[str] | None = None,
+    chemicals: Sequence[str] | None = None,
     x_axis: str | None = None,
     y_axis: str | None = None,
     experiment: int | None = None,
@@ -180,7 +181,10 @@ def build_project_report_payload(
             selected_wells_mode=normalized_selected_wells_mode,
         )
     else:
-        context = PlotlyBuildContext(params=selected_params)
+        context = PlotlyBuildContext(
+            params=selected_params,
+            chemicals=chemicals,
+        )
 
     cards: list[PlotlyCard] = builder.build(result, context)
 
