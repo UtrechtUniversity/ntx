@@ -11,6 +11,24 @@ There are two separate interfaces to the application:
 1. The Django Admin interface, where experiments can be uploaded and edited.
 2. The reporting frontend, with visualizations and (tbd) project/experiment details.
 
+Both interfaces use the same login and the same permissions: every logged-in user can view all projects, their experiments, uploads (ingests) and reports. Your role in a project decides what else you can do there. Use "My projects" on the Projects page (or the "My projects" filter in the admin's project, experiment and ingest lists) to see only the projects you collaborate on.
+
+## Roles
+
+Viewing needs no role. Each collaborator in a project has one of two roles:
+
+| Role    | Can do |
+|---------|--------|
+| Editor  | Upload and promote new experiments. Editors can edit, re-promote and delete the uploads and experiments they created themselves. |
+| Manager | Everything, for any object in the project: edit the project, manage collaborators, edit/promote/delete any upload or experiment, and delete the project. |
+
+- Whoever creates a project becomes its manager. A project always keeps at least one manager.
+- Members of the **Researchers** group can create projects and edit chemicals and concentration units (which are shared by all projects).
+- Members of the **Admins** group can do everything researchers can, and have a manager's rights in every project, whatever their own role there (or none). Being an admin does not add you to a project's collaborators.
+- Superusers can do everything.
+
+Superusers add users to the Researchers and Admins groups on the user's page in the admin (`Users` → user → `Groups`).
+
 Since the project visualizations requires experiment data to have been processed, we will start with the admin interface.
 
 # Admin interface

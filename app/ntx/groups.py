@@ -4,9 +4,9 @@ Global (non-project) permissions granted through Django groups.
 Keep project-scoped rights in memberships. Regular group grants can satisfy objectless
 permission checks without a project role, but ModelBackend ignores them when an object is
 supplied, so they do not override object-specific role checks.
-The intended global grants are project creation (`add_project`), permissions for shared
-models, and `manage_all_projects`, which the role layer checks to make Admins managers
-everywhere.
+The intended global grants are project creation (`add_project`), chemicals and
+concentration units (shared by all projects), and `manage_all_projects`, which the role
+layer explicitly checks to make Admins managers everywhere.
 """
 
 from __future__ import annotations
