@@ -9,7 +9,16 @@ from django.shortcuts import get_object_or_404, render
 from django.views.decorators.http import require_GET as django_require_GET
 
 from .analysis.pipeline import AnalysisPipelineError
-from .models import Condition, Experiment, OutlierMethod, Project
+from .middleware import json_api
+from .models import (
+    Condition,
+    Experiment,
+    ExperimentIngest,
+    OutlierMethod,
+    Project,
+    ProjectRole,
+)
+from .permissions import Action, can_in_project, is_project_admin, project_roles, user_can
 from .reports.plotly.builders import build_plot_options
 from .reports.service import (
     build_project_report_experiment_metadata_payload,
@@ -26,23 +35,70 @@ class _ViewDecorator(Protocol):
 require_GET = cast(_ViewDecorator, django_require_GET)
 
 
+def get_project_or_404(request: HttpRequest, slug: str) -> Project:
+    """
+    Return the project if the user may view it (every logged-in user may), or raise 404.
+    """
+    return get_object_or_404(Project.objects.visible_to(request.user), slug=slug)
+
+
+def _role_label(role: ProjectRole | None, *, is_admin: bool) -> str:
+    """
+    The user's own role in a project, noting admin status (which gives manager rights).
+    """
+    if is_admin:
+        return f"{role.label} (Admin)" if role else "Admin"
+    return str(role.label) if role else ""
+
+
+# Query string value of `show` that limits the projects list to the user's own projects.
+MY_PROJECTS = "mine"
+
+
 def projects_overview(request: HttpRequest) -> HttpResponse:
-    projects = Project.objects.annotate(experiments_count=Count("experiments", distinct=True))
-    return render(request, "ntx/projects_list.html", {"projects": projects})
+    show_mine = request.GET.get("show") == MY_PROJECTS
+    queryset = (
+        Project.objects.with_collaborator(request.user)
+        if show_mine
+        else Project.objects.visible_to(request.user)
+    )
+    projects = list(queryset.annotate(experiments_count=Count("experiments", distinct=True)))
+    roles = project_roles(request.user)
+    is_admin = is_project_admin(request.user)
+    for project in projects:
+        setattr(project, "role_label", _role_label(roles.get(project.pk), is_admin=is_admin))
+    return render(
+        request,
+        "ntx/projects_list.html",
+        {
+            "projects": projects,
+            "show_mine": show_mine,
+            "my_projects": MY_PROJECTS,
+            "can_add_project": user_can(request.user, Action.ADD, Project),
+        },
+    )
 
 
 def project_detail(request: HttpRequest, slug: str) -> HttpResponse:
-    project = get_object_or_404(Project, slug=slug)
+    project = get_project_or_404(request, slug)
     experiments = project.experiments.all()
+    role = project_roles(request.user).get(project.pk)
     return render(
         request,
         "ntx/project_detail.html",
-        {"project": project, "experiments": experiments},
+        {
+            "project": project,
+            "experiments": experiments,
+            "role_label": _role_label(role, is_admin=is_project_admin(request.user)),
+            "can_change_project": user_can(request.user, Action.CHANGE, Project, project),
+            "can_delete_project": user_can(request.user, Action.DELETE, Project, project),
+            "can_add_ingest": can_in_project(request.user, Action.ADD, ExperimentIngest, project),
+        },
     )
 
 
 def project_report(request: HttpRequest, slug: str) -> HttpResponse:
-    project = get_object_or_404(Project, slug=slug)
+    project = get_project_or_404(request, slug)
     plot_options = build_plot_options()
     experiments = [
         {"id": exp.id, "label": f"{exp.code} ({exp.pk})"} for exp in project.experiments.all()
@@ -59,9 +115,10 @@ def project_report(request: HttpRequest, slug: str) -> HttpResponse:
     )
 
 
+@json_api
 @require_GET
 def project_report_api(request: HttpRequest, slug: str) -> JsonResponse:
-    project = get_object_or_404(Project, slug=slug)
+    project = get_project_or_404(request, slug)
 
     params_input = request.GET.getlist("params")
     params: list[str] | None = None
@@ -119,9 +176,10 @@ def project_report_api(request: HttpRequest, slug: str) -> JsonResponse:
     return JsonResponse(payload)
 
 
+@json_api
 @require_GET
 def project_report_metadata_api(request: HttpRequest, slug: str) -> JsonResponse:
-    project = get_object_or_404(Project, slug=slug)
+    project = get_project_or_404(request, slug)
     experiment_param = request.GET.get("experiment")
 
     try:
@@ -139,14 +197,14 @@ def project_report_metadata_api(request: HttpRequest, slug: str) -> JsonResponse
 
 def experiments_list(request: HttpRequest) -> HttpResponse:
     experiments = (
-        Experiment.objects.select_related("project")
+        Experiment.objects.visible_to(request.user)
+        .select_related("project")
         .prefetch_related(
             Prefetch(
                 "conditions",
                 queryset=Condition.objects.select_related("chemical"),
             )
         )
-        .all()
     )
 
     experiment_rows: list[dict[str, object]] = []
@@ -171,7 +229,9 @@ def experiments_list(request: HttpRequest) -> HttpResponse:
 
 def experiment_detail(request: HttpRequest, pk: int) -> HttpResponse:
     experiment = get_object_or_404(
-        Experiment.objects.select_related("project").prefetch_related(
+        Experiment.objects.visible_to(request.user)
+        .select_related("project", "created_by")
+        .prefetch_related(
             Prefetch(
                 "conditions",
                 queryset=Condition.objects.select_related("chemical", "unit").order_by("name"),
@@ -183,5 +243,9 @@ def experiment_detail(request: HttpRequest, pk: int) -> HttpResponse:
     return render(
         request,
         "ntx/experiment_detail.html",
-        {"experiment": experiment, "conditions": conditions},
+        {
+            "experiment": experiment,
+            "conditions": conditions,
+            "can_delete_experiment": user_can(request.user, Action.DELETE, Experiment, experiment),
+        },
     )

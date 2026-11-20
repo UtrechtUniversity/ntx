@@ -13,11 +13,22 @@
           </a>
           · {{ experiment.date|date:"Y-m-d"|default:"—" }}
           · {{ experiment.get_status_display }}
+          {% if experiment.created_by %}· Created by {{ experiment.created_by.get_username }}{% endif %}
         </p>
       </div>
-      <a href="{% url 'ntx:experiments' %}" class="text-sm font-medium text-slate-700 hover:underline">
-        Back to Experiments
-      </a>
+      <div class="flex items-center gap-3 text-sm font-medium">
+        {% if can_delete_experiment %}
+          <a
+            href="{% url 'admin:ntx_experiment_delete' experiment.pk %}"
+            class="rounded-xl border border-red-300 px-3 py-2 text-red-700 hover:bg-red-50"
+          >
+            Delete experiment
+          </a>
+        {% endif %}
+        <a href="{% url 'ntx:experiments' %}" class="text-slate-700 hover:underline">
+          Back to Experiments
+        </a>
+      </div>
     </div>
   </div>
 

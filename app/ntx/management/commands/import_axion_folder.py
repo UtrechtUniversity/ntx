@@ -4,6 +4,8 @@ import shutil
 import time
 from pathlib import Path
 
+from django.contrib.auth import get_user_model
+from django.contrib.auth.base_user import AbstractBaseUser
 from django.core.files.storage import default_storage
 from django.core.management.base import BaseCommand, CommandError
 
@@ -43,6 +45,10 @@ class Command(BaseCommand):
             help="Replace existing experiments with the same code",
         )
         parser.add_argument(
+            "--created-by",
+            help="Username to record as creator of the imported experiments",
+        )
+        parser.add_argument(
             "--dry-run",
             action="store_true",
             help="Scan and print summary without writing to the database",
@@ -69,6 +75,7 @@ class Command(BaseCommand):
         copy_into_storage = options["copy_into_storage"]
 
         project = self._get_project(project_slug)
+        created_by = self._get_user(options["created_by"]) if options.get("created_by") else None
         chemical = self._resolve_chemical(chemical_name) if chemical_name else None
         control_chemical = (
             self._resolve_chemical(control_chemical_name) if control_chemical_name else None
@@ -97,6 +104,7 @@ class Command(BaseCommand):
                     control_chemical=control_chemical,
                     default_unit_symbol=unit_symbol,
                     replace_existing=replace_existing,
+                    created_by=created_by,
                 )
             except IngestionError as exc:
                 raise CommandError(str(exc)) from exc
@@ -112,6 +120,13 @@ class Command(BaseCommand):
             return Project.objects.get(slug=slug)
         except Project.DoesNotExist as exc:
             raise CommandError(f"Project with slug '{slug}' does not exist") from exc
+
+    def _get_user(self, username: str) -> AbstractBaseUser:
+        User = get_user_model()
+        try:
+            return User._default_manager.get(username=username)
+        except User.DoesNotExist as exc:
+            raise CommandError(f"User '{username}' does not exist") from exc
 
     def _resolve_chemical(self, name: str) -> Chemical:
         chemical = Chemical.objects.filter(name__iexact=name).first()

@@ -1,0 +1,44 @@
+{% extends "admin/delete_confirmation.html" %}
+
+{% block delete_confirm %}
+  <div class="ntx-delete-warning" style="border: 2px solid var(--delete-button-bg, #ba2121); border-radius: 4px; padding: 1em 1.5em; margin-bottom: 2em;">
+    <h2 style="color: var(--delete-button-bg, #ba2121); margin-top: 0;">
+      Warning: this permanently deletes the project and all of its data
+    </h2>
+    {% with experiment_count=experiments_to_delete|length %}
+      <p>
+        Deleting <strong>{{ object }}</strong> removes
+        <strong>{{ experiment_count }} experiment{{ experiment_count|pluralize }}</strong>
+        (with all their conditions, metrics and file records),
+        <strong>{{ ingests_to_delete_count }} upload{{ ingests_to_delete_count|pluralize }}</strong>
+        and all collaborator roles. This cannot be undone.
+      </p>
+      {% if experiment_count %}
+        <h3>Experiments that will be removed</h3>
+        <table id="experiments-to-delete">
+          <thead>
+            <tr>
+              <th scope="col">Code</th>
+              <th scope="col">Date</th>
+              <th scope="col">Status</th>
+              <th scope="col">Created by</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for experiment in experiments_to_delete %}
+              <tr>
+                <td>{{ experiment.code }}</td>
+                <td>{{ experiment.date|date:"Y-m-d"|default:"—" }}</td>
+                <td>{{ experiment.get_status_display }}</td>
+                <td>{{ experiment.created_by|default:"—" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p>This project has no experiments.</p>
+      {% endif %}
+    {% endwith %}
+  </div>
+  {{ block.super }}
+{% endblock %}

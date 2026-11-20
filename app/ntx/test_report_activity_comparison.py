@@ -317,7 +317,7 @@ def test_project_report_payload_uses_standard_default_param_selection():
     assert payload["selected_params"] == default_params
 
 
-def test_project_report_api_returns_json(client):
+def test_project_report_api_returns_json(admin_client):
     project = Project.objects.create(name="Report API Project")
     unit = ConcentrationUnit.objects.create(name="uM", symbol="uM", slug="um")
     chemical = Chemical.objects.create(name="ChemA")
@@ -359,7 +359,7 @@ def test_project_report_api_returns_json(client):
     )
 
     url = reverse("ntx:project_report_api", kwargs={"slug": project.slug})
-    response = client.get(
+    response = admin_client.get(
         url,
         {
             "plot": "activity_comparison",

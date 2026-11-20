@@ -11,7 +11,23 @@ There are two separate interfaces to the application:
 1. The Django Admin interface, where experiments can be uploaded and edited.
 2. The reporting frontend, with visualizations and (tbd) project/experiment details.
 
-Note: permissions have not yet been implemented. Once this is added, both the administration interface and the frontend will use the same user system for authentication and access control.
+Both interfaces use the same login and the same permissions: every logged-in user can view all projects, their experiments, uploads (ingests) and reports. Your role in a project decides what else you can do there. Use "My projects" on the Projects page (or the "My projects" filter in the admin's project, experiment and ingest lists) to see only the projects you collaborate on.
+
+## Roles
+
+Viewing needs no role. Each collaborator in a project has one of two roles:
+
+| Role    | Can do |
+|---------|--------|
+| Editor  | Upload and promote new experiments. Editors can edit, re-promote and delete the uploads and experiments they created themselves. |
+| Manager | Everything, for any object in the project: edit the project, manage collaborators, edit/promote/delete any upload or experiment, and delete the project. |
+
+- Whoever creates a project becomes its manager. A project always keeps at least one manager.
+- Members of the **Researchers** group can create projects and edit chemicals and concentration units (which are shared by all projects).
+- Members of the **Admins** group can do everything researchers can, and have a manager's rights in every project, whatever their own role there (or none). Being an admin does not add you to a project's collaborators.
+- Superusers can do everything.
+
+Superusers add users to the Researchers and Admins groups on the user's page in the admin (`Users` → user → `Groups`).
 
 Since the project visualizations requires experiment data to have been processed, we will start with the admin interface.
 
@@ -34,8 +50,8 @@ Verification of the metadata before the Ingest can be promoted to Experiment wil
 
 ### Experiment Ingest
 
-- In the Admin bar on the left, click `+ Add` for `Experiment ingests`.
-- Upload a layout xlsx and baseline + exposure CSV files, and set (or create) the Project the experiment belongs to.
+- In the Admin bar on the left, click `+ Add` for `Experiment ingests` (or use "Upload experiment" on a project page).
+- Upload a layout xlsx and baseline + exposure CSV files, and choose the Project the experiment belongs to. Only projects where you are an editor or manager can be chosen.
 - Click Save. The metadata is parsed from the filenames and layout file contents. You are then directed to the listing of Experiment Ingests.
 - Click the newly added Experiment Ingest. You can change any of the editable fields.
   If metadata parsing worked correctly, you should only have to set `Exposure type`, and maybe change `Control` to the actual control chemical.
@@ -50,12 +66,17 @@ Verification of the metadata before the Ingest can be promoted to Experiment wil
   If something went wrong, the error is displayed on the detail page of the ingest you tried to promote.
 - If one of the metadata fields was incorrect, run the `Parse/reparse selected uploads` action on the ingest, then correct the details and retry promotion.
   TODO: add a way to clear the error without reparsing the data.
+- To replace an existing experiment with the same code, use "Promote selected ingests, replacing existing Experiments".
+  Managers can replace any experiment in the project, editors only experiments they created.
+  An experiment in a different project is never replaced.
 
 ## Projects
 
 The main feature is currently organizing the experiments for the reporting views, and capturing a few project details.
 
-Once permission handling is added, setting collaborators on a project can be used for access controls.
+Managers add collaborators and set their roles in the `Collaborators` section of the project's admin page.
+
+Deleting a project also deletes all of its experiments and uploads. The confirmation page lists every experiment that will be removed.
 
 The default value for the `Outlier method` used in project reports can be configured.
 

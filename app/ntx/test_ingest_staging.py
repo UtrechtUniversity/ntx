@@ -200,6 +200,7 @@ def test_admin_promotion_reports_attempted_failures_separately(
     stored_data_dir: Path,
     media_root: Path,
     monkeypatch: pytest.MonkeyPatch,
+    admin_user,
 ):
     failed_ingest = _create_invalid_parsed_ingest(
         stored_data_dir=stored_data_dir,
@@ -214,6 +215,7 @@ def test_admin_promotion_reports_attempted_failures_separately(
     skipped_ingest.save(update_fields=["status", "updated_at"])
 
     request = RequestFactory().post("/admin/ntx/experimentingest/")
+    request.user = admin_user
     model_admin = ExperimentIngestAdmin(ExperimentIngest, AdminSite())
     captured: list[tuple[object, int | str]] = []
 
@@ -339,6 +341,7 @@ def test_admin_replacement_uses_corrected_sex(
     media_root: Path,
     monkeypatch: pytest.MonkeyPatch,
     corrected_sex,
+    admin_user,
 ):
     folder = discover_experiment_files(stored_data_dir)
     project = Project.objects.get(slug="default-project")
@@ -362,6 +365,7 @@ def test_admin_replacement_uses_corrected_sex(
     assert form.is_valid(), form.errors
 
     request = RequestFactory().post("/admin/ntx/experimentingest/")
+    request.user = admin_user
     model_admin = ExperimentIngestAdmin(ExperimentIngest, AdminSite())
 
     obj = form.save(commit=False)

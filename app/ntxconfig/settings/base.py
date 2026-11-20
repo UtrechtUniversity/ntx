@@ -22,6 +22,8 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    # Every page requires login unless marked with @login_not_required.
+    "ntx.middleware.LoginRequiredMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -66,6 +68,11 @@ AUTH_PASSWORD_VALIDATORS = [
 
 # Custom user model for extensibility.
 AUTH_USER_MODEL = "ntx_users.User"
+AUTHENTICATION_BACKENDS = [
+    "django.contrib.auth.backends.ModelBackend",
+    # Project role based permissions for ntx models (see ntx/permissions.py).
+    "ntx.permissions.ProjectRoleBackend",
+]
 LOGIN_REDIRECT_URL = "ntx:home"
 
 
