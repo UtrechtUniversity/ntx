@@ -26,6 +26,9 @@ from .exposure_types import (
 from .metrics_schema import MetricsPayload, MetricsQcPayload
 from .utils import sanitize_numeric_json
 
+if TYPE_CHECKING:
+    from django.db.models.fields.related_descriptors import ReverseManyToOneDescriptor
+
 User = get_user_model()
 
 type AnyUser = AbstractBaseUser | AnonymousUser
@@ -200,7 +203,7 @@ class ProjectScopedManager[M: models.Model](models.Manager[M]):
 
 class Project(TimeStampedModel):
     if TYPE_CHECKING:
-        experiments: models.Manager["Experiment"]
+        experiments: ReverseManyToOneDescriptor["Experiment"]
         experiment_ingests: models.Manager["ExperimentIngest"]
         memberships: models.Manager["ProjectMembership"]
         created_by_id: int | None
@@ -394,9 +397,9 @@ class Sex(models.TextChoices):
 
 class Experiment(TimeStampedModel):
     if TYPE_CHECKING:
-        conditions: models.Manager["Condition"]
-        files: models.Manager["ExperimentFile"]
-        neuronal_metrics_frames: models.Manager["NeuronalMetricsFrame"]
+        conditions: ReverseManyToOneDescriptor["Condition"]
+        files: ReverseManyToOneDescriptor["ExperimentFile"]
+        neuronal_metrics_frames: ReverseManyToOneDescriptor["NeuronalMetricsFrame"]
         project_id: int
         created_by_id: int | None
 
@@ -633,7 +636,7 @@ class ExperimentIngest(TimeStampedModel):
     if TYPE_CHECKING:
         project_id: int
         created_by_id: int | None
-        ingest_groups: models.Manager["ExperimentIngestGroup"]
+        ingest_groups: ReverseManyToOneDescriptor["ExperimentIngestGroup"]
 
     project_path: ClassVar[str] = "project"
     owner_path: ClassVar[str] = "created_by"

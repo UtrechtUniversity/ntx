@@ -38,7 +38,7 @@ exclude = [
 respect-ignore-files = false
 
 [tool.ty.rules]
-unresolved-import = "error"
+import-not-found = "error"
 possibly-unresolved-reference = "error"
 
 [tool.ty.terminal]

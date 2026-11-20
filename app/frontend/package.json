@@ -21,6 +21,6 @@
   },
   "allowScripts": {
     "esbuild@0.25.12": true,
-    "@parcel/watcher@2.5.1": true
+    "@parcel/watcher": false
   }
 }
